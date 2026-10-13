@@ -1,42 +1,47 @@
-# AdultCam Ω — Control Tower v0.6.0
+# AdultCam Ω — Control Tower v0.7.0
 
-## Wydanie 0.6.0 — bezpieczny wielooperatorski panel i lokalny RTMPS (13.10.2026)
+## Wydanie 0.7.0 — laboratoryjny odbiór i bramka prywatności
 
-Implementacja obejmuje OAuth/OIDC Authorization Code + PKCE, weryfikację JWT
-RS256, przeglądarkowe sesje z ochroną CSRF, role viewer/operator/admin,
-cofanie sesji, audyt aktora, HTTPS reverse proxy Caddy oraz test FFmpeg
-z prawdziwym połączeniem TLS i odbiorem syntetycznych klatek RTMPS.
-Nie wykonano prawdziwej transmisji z OBS Studio ani testu dostarczenia do
-żadnej zewnętrznej platformy. Brak zweryfikowanej produkcyjnej instancji
-IdP, domeny HTTPS lub testu Samsung S24 Ultra.
+Nowe: podpisywane potwierdzenia odbioru **własnego** RTMPS, opcjonalna blokada START przy niepoprawnej scenie OBS oraz strumieniowy filtr pełnego zaciemnienia RGB24. To nie jest niezależne potwierdzenie odbioru przez zewnętrzną platformę ani wdrożona anonimizacja twarzy. Szczegóły: [docs/PHASE_0_7_SECURITY_AND_DELIVERY.md](docs/PHASE_0_7_SECURITY_AND_DELIVERY.md). `platform_delivery = UNVERIFIED`.
 
-Instrukcje: [konsola HTTPS](docs/REMOTE_CONSOLE_0_6.md),
-[test RTMPS](docs/RTMPS_ACCEPTANCE_0_6.md),
-[release notes](RELEASE_NOTES_0.6.0.md).
+## Wydanie 0.6.0 — logowanie przeglądarkowe OIDC/PKCE i test RTMPS (13.10.2026)
 
-Syntetyczny test FFmpeg/OpenSSL:
+Wprowadzono serwerowe sesje przeglądarkowe OIDC, kod autoryzacji z PKCE S256,
+JWT RS256, CSRF, role `viewer/operator/admin`, administracyjne cofanie sesji,
+panel operatorski z wylogowaniem oraz konfigurację reverse-proxy HTTPS (Caddy).
+Test RTMPS wykorzystuje **rzeczywiste** połączenie TLS i odczyt syntetycznych
+klatek przez FFmpeg. **NIE wykonano testu prawdziwego OBS Studio, platformy
+zewnętrznej ani Samsunga S24 Ultra.** Kod został przetestowany lokalnie,
+ale nie dopuszczony do produkcji. Szczegóły: [RELEASE_NOTES_0.6.0.md](RELEASE_NOTES_0.6.0.md),
+[docs/REMOTE_CONSOLE_0_6.md](docs/REMOTE_CONSOLE_0_6.md),
+[docs/RTMPS_ACCEPTANCE_0_6.md](docs/RTMPS_ACCEPTANCE_0_6.md).
 
-    python -m adultcam.rtmps_probe
+Uruchom lokalny test transportu RTMPS (FFmpeg i OpenSSL wymagane):
 
-## Wydanie 0.5.0 — OIDC Bearer API i bramka testu prawdziwego OBS (13.10.2026)
+```sh
+python -m adultcam.rtmps_probe
+```
 
-**Wdrożono w kodzie:** opcjonalny JWT/OIDC (RS256, JWKS, issuer/audience/exp),
-role `viewer/operator/admin`, kontrolę admin-only dla księgi i oświadczeń
-oraz wyłącznie odczytowy preflight lokalnego OBS przed prywatnym testem.
+## Wydanie 0.5.0 — JWT/OIDC API, role-based access i test prawdziwego OBS (13.10.2026)
 
-Dokumentacja: [OIDC/RBAC API](docs/OIDC_API_0_5.md) ·
-[Kontrolowany test OBS](docs/OBS_REAL_DEVICE_GATE_0_5.md) ·
-[Notatki wydania](RELEASE_NOTES_0.5.0.md).
+**Nowy zakres lokalny:** opcjonalne OIDC Bearer JWT (weryfikacja RS256/JWKS,
+issuer/audience/exp), role `viewer`/`operator`/`admin`, jawny dostęp admin-only
+do rejestru finansowego i oświadczeń oraz preflight prawdziwego OBS, który
+**niczego nie uruchamia**. Domyślny tryb lokalny HTTP Basic zachowano.
+
+* [Zdalne OIDC JWT API / role / Android SSH](docs/OIDC_API_0_5.md)
+* [Bezpieczna bramka testu na prawdziwym OBS](docs/OBS_REAL_DEVICE_GATE_0_5.md)
+* [Notatki wydania](RELEASE_NOTES_0.5.0.md)
 
 ```bash
 python -m adultcam.obs_acceptance --check --port 19350
 python -m pytest -q
 ```
 
-**Limitacje:** brak podłączonego IdP i logowania OIDC w HTML UI; brak
-real-device OBS/RTMPS, uwierzytelnienia publicznej warstwy HTTPS/mTLS,
-konektorów platform i anonimizacji obrazu. Serwer nadal dostępny tylko przez
-localhost; nie wystawiaj portu 8765 do internetu.
+**Nie jest to produkcyjna zdalna konsola:** frontend HTML nie ma jeszcze
+logowania OIDC, a HTTPS / mTLS, rzeczywisty OBS, zewnętrzny RTMPS ingest i
+konektory platform nie zostały przetestowane end-to-end. Nie wystawiaj portu
+8765 poza localhost. Nie udostępniaj kluczy transmisji ani tokenów.
 
 ## Wydanie 0.4.0 — priorytet P0: kontrolowany test prywatnego RTMP i fail-closed RECOVERY (13.10.2026)
 
@@ -221,7 +226,7 @@ Zestaw zawiera test prawdziwej komunikacji WebSocket z **lokalnym, sztucznym ser
 - Brak osobnych, zatwierdzonych adapterów platform, bezpiecznego multistreamingu i synchronizacji prywatnych pokoi.
 - Brak działającej anonimizacji twarzy z trybem fail-closed i weryfikacji geoblokad.
 - Brak niezależnej weryfikacji wieku/zgód; oświadczenie operatora nie jest takim dowodem.
-- OIDC JWT/RBAC dostępne jedynie dla API w trybie opcjonalnym; brak produkcyjnego logowania OIDC w panelu WWW, warstwy HTTPS/mTLS, ochrony przed wieloma operatorami oraz szyfrowanych kopii zapasowych.
+- Brak zdalnego OIDC/mTLS, RBAC, ochrony przed wieloma operatorami, szyfrowanych kopii zapasowych i automatycznego monitoringu.
 - Brak testu na Samsung Galaxy S24 Ultra. Obsługa OBS na innym komputerze wymaga osobnej, bezpiecznej architektury sieciowej — aktualny backend komunikuje się wyłącznie z lokalnym OBS.
 
 **Uwaga:** funkcjonalny endpoint START/STOP nie oznacza gotowości do produkcyjnych transmisji. Przed każdą rzeczywistą transmisją operator musi niezależnie zweryfikować uczestników, zgody, miejsce publikacji, regulamin oraz ochronę prywatności.
