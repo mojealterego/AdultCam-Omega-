@@ -150,3 +150,5 @@ Kolejny etap 0.9.0: zatwierdzone odczytowe integracje oficjalnych API, testy rea
 Dostarczono stały, oficjalny adapter odczytu stanu Twitch (tylko dla treści zgodnych z regulaminem, niepornograficznych) oraz moduł RGB24, który przy niepewnej detekcji nie przekazuje nieprzetworzonej klatki. Zrealizowano testy na atrapach HTTP i syntetycznych klatkach FFmpeg.
 
 **Otwarte:** połączenie z prawdziwą platformą 18+, rzeczywisty OBS, niezależne potwierdzenie obrazu po stronie platformy, działający detektor twarzy i wpięcie toru ochrony przed OBS, bezpieczne PRIVATE/STOP, Samsung Galaxy S24 Ultra, pełne E2E. Status PARTIAL — NOT_PRODUCTION_READY.
+
+**Uzupełnienie 0.9.0:** Chaturbate official owner Stats API — tylko odczyt własnego konta, testy HTTP z fikcyjnymi poświadczeniami. Bez testu live, bez sterowania nadawaniem, bez gwarancji klatek.
