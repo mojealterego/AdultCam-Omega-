@@ -26,6 +26,10 @@ def _probe(rpc, url: str, password: str, policy: StreamPolicy) -> Probe:
             return Probe(False, reconnecting, None)
         destination = rpc(url, password, 'GetStreamServiceSettings')
         reason = policy.verify(destination)
+        if reason is None and policy.required_scene is not None:
+            scene = rpc(url, password, 'GetCurrentProgramScene')
+            if scene.get('currentProgramSceneName') != policy.required_scene:
+                reason = 'PRIVACY_SCENE_DRIFT'
         return Probe(True, reconnecting, reason)
     except Exception:
         # Exception messages can contain credentials: never persist or return them.
