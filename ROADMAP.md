@@ -114,3 +114,20 @@ Nie ma gotowości produkcyjnej.
 Priorytet 0.6.0: OIDC Authorization Code + PKCE/BFF dla panelu WWW, real-device
 RTMPS E2E z dowodami odbioru, rozliczalność wszystkich zmian, sterowanie
 wieloma operatorami, następnie zatwierdzony adapter odczytowy platformy.
+
+## Etap 0.6.0 — Authorization Code/PKCE, RBAC i lokalny RTMPS (13.10.2026)
+
+Zaimplementowano: OAuth browser/PKCE S256 + RS256 JWT, wyraźne role,
+serwerowe sesje 15 min i admin revocation, anti-CSRF, audyt tożsamości,
+TLS proxy config na loopback, test rzeczywistego transportu TLS/RTMPS
+dla sztucznego obrazu z FFmpeg i liczeniem odebranych klatek.
+
+Bramki nadal OPEN: prawdziwy OBS/RTMPS E2E, rzeczywisty IdP i
+publiczny HTTPS z zewnętrznej sieci, fizyczny Samsung S24 Ultra,
+zabezpieczenia ingress przed DoS, read-only platform adapters,
+prawne/administracyjne uprawnienia osób, fail-closed face masking.
+P0 pozostaje PARTIAL, wersja 0.6.0 ma status BETA.
+
+Następny etap 0.7.0: autoryzowany rzeczywisty OBS + zaufany ingest RTMPS,
+potwierdzenia destination delivery, zgodne z regulaminami adaptery
+read-only i media privacy gate z fail-closed.
