@@ -541,7 +541,7 @@ def create_app() -> FastAPI:
         with db.connect() as c:
             cur=c.execute('INSERT INTO ledger(platform,category,currency,amount_minor,created_at) VALUES(?,?,?,?,?)',
                           (body.platform,body.category,body.currency,body.amount_minor,utc_now()))
-            db.event(c,'LEDGER_MANUAL_ENTRY',str(cur.lastrowid),{'amount_minor':body.amount_minor,'currency':body.currency, 'operator_subject':user.subject, 'auth_source':user.source},str(uuid.uuid4())
+            db.event(c,'LEDGER_MANUAL_ENTRY',str(cur.lastrowid),{'amount_minor':body.amount_minor,'currency':body.currency, 'operator_subject':user.subject, 'auth_source':user.source},str(uuid.uuid4()))
             return {'id':cur.lastrowid, 'source':'MANUAL'}
 
     return app
