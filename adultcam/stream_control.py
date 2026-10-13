@@ -38,7 +38,9 @@ class StreamPolicy:
 def _valid_destination(value: str) -> bool:
     try:
         parts = urlsplit(value)
-        return (parts.scheme in {'rtmp', 'rtmps'} and bool(parts.hostname)
+        return ((parts.scheme == 'rtmps' or
+                 (parts.scheme == 'rtmp' and parts.hostname in {'127.0.0.1', 'localhost'}))
+                and bool(parts.hostname)
                 and parts.username is None and parts.password is None
                 and not parts.query and not parts.fragment and not any(ch.isspace() for ch in value))
     except ValueError:
