@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -20,6 +20,7 @@ from .database import Database, utc_now
 from .domain import action_policy, session_transition_allowed
 from .obs import request as obs_request
 from .monitor import monitor_once, monitor_status
+from .ingest_receipts import verify_proof
 from .stream_control import StreamPolicy, active_value, public_status, run_obs_action
 from .strategy import build_ten_hour_plan, build_month_plan
 
@@ -106,9 +107,11 @@ def create_app() -> FastAPI:
     browser = BrowserSessions(db, browser_config, oidc) if browser_config is not None and oidc is not None else None
     obs_url = os.getenv('OBS_WS_URL','ws://127.0.0.1:4455')
     obs_password = os.getenv('OBS_WS_PASSWORD','')
-    policy = StreamPolicy.from_env(os.getenv('ADULTCAM_OBS_ALLOWED_SERVERS', ''))
-    app = FastAPI(title='AdultCam Ω', version='0.6.0', docs_url=None, redoc_url=None)
+    policy = StreamPolicy.from_env(os.getenv('ADULTCAM_OBS_ALLOWED_SERVERS', ''),
+                                   os.getenv('ADULTCAM_PRIVACY_SCENE'))
+    app = FastAPI(title='AdultCam Ω', version='0.7.0', docs_url=None, redoc_url=None)
     app.state.allowed_servers = policy.allowed_servers
+    app.state.required_scene = policy.required_scene
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1'])
 
     @app.middleware('http')
@@ -226,7 +229,7 @@ def create_app() -> FastAPI:
 
     @app.get('/api/health')
     def health():
-        return {'status':'OK', 'version':'0.6.0','external_platform_integrations':'NOT_CONNECTED'}
+        return {'status':'OK', 'version':'0.7.0','external_platform_integrations':'NOT_CONNECTED'}
 
     @app.get('/api/auth/me')
     def auth_me(user: Principal = Depends(auth)):
@@ -266,6 +269,57 @@ def create_app() -> FastAPI:
                     'integration_states':{'OBS':'LOCAL_ADAPTER_NOT_LIVE_VERIFIED','EXTERNAL_PLATFORMS':'MANUAL_ONLY'},
                     'unresolved_obs_actions': db.rows(c, "SELECT a.id,a.operation,a.session_id FROM action_intents a LEFT JOIN obs_reconciliations r ON r.action_id=a.id WHERE a.status='UNKNOWN' AND r.action_id IS NULL ORDER BY a.id")}
 
+    @app.post('/api/ingest/receipts', status_code=201)
+    def ingest_receipt(body: dict, request: Request):
+        """Signed evidence from an operator-owned RTMPS receiver, not a platform.
+
+        The separate scoped HMAC credential authenticates the receiver itself;
+        browser sessions and operator API tokens do NOT authorize this route.
+        """
+        if request.headers.get('Origin'):
+            raise HTTPException(403, 'Odbiornik maszynowy nie akceptuje Origin przeglądarki.')
+        key = os.getenv('ADULTCAM_INGEST_HMAC_KEY', '')
+        registered = set(item.strip() for item in
+                         os.getenv('ADULTCAM_INGEST_RECEIVERS', '').split(',') if item.strip())
+        if len(key.encode('utf-8')) < 32 or not registered:
+            raise HTTPException(503, 'Potwierdzanie odbioru nie zostało skonfigurowane.')
+        try:
+            proof = verify_proof(body,
+                                 request.headers.get('X-AdultCam-Ingest-Signature',''),
+                                 key, registered)
+        except (ValueError, TypeError):
+            raise HTTPException(403, 'Dowód odbioru jest nieprawidłowy.')
+        with db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if not c.execute('SELECT 1 FROM sessions WHERE id=?', (proof.session_id,)).fetchone():
+                raise HTTPException(404, 'Nie znaleziono sesji odbioru.')
+            try:
+                result = c.execute(
+                    'INSERT INTO ingest_receipts(receiver_id,session_id,nonce,observed_at,received_frames,recorded_at) '
+                    'VALUES(?,?,?,?,?,?)',
+                    (proof.receiver_id,proof.session_id,proof.nonce,proof.observed_at,
+                     proof.received_frames,utc_now()))
+            except sqlite3.IntegrityError:
+                raise HTTPException(409, 'Powtórzony dowód odbioru (nonce).')
+            db.event(c,'OWNED_INGEST_RECEIPT',str(result.lastrowid),
+                     {'receiver_id':proof.receiver_id,'session_id':proof.session_id,
+                      'received_frames':proof.received_frames,
+                      'verification':'OWNED_INGEST_RECEIVED',
+                      'platform_delivery':'UNVERIFIED'},str(uuid.uuid4()))
+            return {'id':result.lastrowid,'verification':'OWNED_INGEST_RECEIVED',
+                    'platform_delivery':'UNVERIFIED','session_id':proof.session_id}
+
+    @app.get('/api/ingest/receipts')
+    def list_ingest_receipts(session_id: int = Query(gt=0),
+                             user: Principal = Depends(auth)):
+        with db.connect() as c:
+            rows = db.rows(c,
+                'SELECT id,receiver_id,session_id,observed_at,received_frames,recorded_at '
+                'FROM ingest_receipts WHERE session_id=? ORDER BY id DESC LIMIT 100',
+                (session_id,))
+            return {'receipts':rows,'verification_scope':'OWNED_INGEST_ONLY',
+                    'platform_delivery':'UNVERIFIED'}
+
     @app.get('/api/platforms/capabilities')
     def platform_capabilities(_: str = Depends(auth)):
         # External services remain MANUAL_ONLY until authorized integrations and
@@ -282,7 +336,7 @@ def create_app() -> FastAPI:
     @app.post('/api/monitor/check')
     def check_monitor(_: str = Depends(mutating)):
         return monitor_once(db,obs_request,obs_url,obs_password,
-                            StreamPolicy(app.state.allowed_servers))
+                            StreamPolicy(app.state.allowed_servers, app.state.required_scene))
 
     @app.post('/api/attestations',status_code=201)
     def attest(body: AttestationIn, user: Principal = Depends(admin_mutating)):
@@ -413,7 +467,7 @@ def create_app() -> FastAPI:
             c.execute("UPDATE action_intents SET status='EXECUTING',updated_at=? WHERE id=?",(utc_now(),aid))
             db.event(c,'ACTION_APPROVED',str(aid),{'operation':action['operation'], 'operator_subject':user.subject, 'auth_source':user.source},str(uuid.uuid4()))
         receipt = run_obs_action(obs_request, obs_url, obs_password, action['operation'],
-                                 StreamPolicy(app.state.allowed_servers))
+                                 StreamPolicy(app.state.allowed_servers, app.state.required_scene))
         with db.connect() as c:
             c.execute('UPDATE action_intents SET status=?,receipt_json=?,updated_at=? WHERE id=?',
                       (receipt['status'],json.dumps(receipt),utc_now(),aid))
@@ -456,7 +510,7 @@ def create_app() -> FastAPI:
                 reconnecting = snapshot.get('outputReconnecting') is True
                 denied=None
                 if observed:
-                    denied=StreamPolicy(app.state.allowed_servers).verify(
+                    denied=StreamPolicy(app.state.allowed_servers, app.state.required_scene).verify(
                         obs_request(obs_url,obs_password,'GetStreamServiceSettings'))
             except Exception:
                 if live and live[0]['state']=='LIVE_PUBLIC':
@@ -525,7 +579,7 @@ def create_app() -> FastAPI:
                 if not active_value(status) or status.get('outputReconnecting') is True:
                     raise HTTPException(409, 'OBS nie nadaje stabilnie.')
                 destination = obs_request(obs_url, obs_password, 'GetStreamServiceSettings')
-                reason = StreamPolicy(app.state.allowed_servers).verify(destination)
+                reason = StreamPolicy(app.state.allowed_servers, app.state.required_scene).verify(destination)
                 if reason:
                     raise HTTPException(409, 'Cel nadawania OBS nie został zatwierdzony.')
             except HTTPException:
@@ -564,7 +618,7 @@ def create_app() -> FastAPI:
                     raise HTTPException(409,'OBS ponawia połączenie: nie można uzgodnić stabilnego stanu.')
                 if observed and action['operation'] == 'start_stream':
                     destination=obs_request(obs_url,obs_password,'GetStreamServiceSettings')
-                    reason=StreamPolicy(app.state.allowed_servers).verify(destination)
+                    reason=StreamPolicy(app.state.allowed_servers, app.state.required_scene).verify(destination)
                     if reason:
                         raise HTTPException(409,'Aktywne OBS ma niezatwierdzony cel; wymagane ręczne zatrzymanie/wyjaśnienie.')
             except HTTPException:
