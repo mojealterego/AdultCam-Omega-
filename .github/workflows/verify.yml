@@ -13,3 +13,7 @@ jobs:
       - run: python -m pip install -e '.[test]'
       - run: python -m pytest -q
       - run: python -m compileall -q adultcam
+      - name: Verify FFmpeg availability and local RTMP receipt
+        run: |
+          ffmpeg -version | head -n 1
+          python -m adultcam.rtmp_probe --self-test --port 0 --duration 2 --timeout 20
