@@ -83,6 +83,22 @@ class Database:
                     last_result TEXT NOT NULL, last_reason_code TEXT,
                     last_observed_active INTEGER CHECK(last_observed_active IN (0,1))
                 );
+                CREATE TABLE IF NOT EXISTS stream_routes (
+                    id INTEGER PRIMARY KEY,
+                    session_id INTEGER NOT NULL REFERENCES sessions(id),
+                    route_key TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    audience TEXT NOT NULL CHECK(audience IN ('PUBLIC','PRIVATE')),
+                    capability TEXT NOT NULL CHECK(capability IN ('MANUAL_ONLY','OWNED_INGEST_TEST')),
+                    receiver_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(session_id, route_key),
+                    CHECK((capability='MANUAL_ONLY' AND receiver_id IS NULL) OR
+                          (capability='OWNED_INGEST_TEST' AND receiver_id IS NOT NULL))
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS one_route_per_owned_receiver
+                  ON stream_routes(session_id, receiver_id)
+                  WHERE receiver_id IS NOT NULL;
                 CREATE TABLE IF NOT EXISTS ingest_receipts (
                     id INTEGER PRIMARY KEY,
                     receiver_id TEXT NOT NULL,
