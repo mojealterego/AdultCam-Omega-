@@ -22,7 +22,7 @@ from .obs import request as obs_request
 from .monitor import monitor_once, monitor_status
 from .ingest_receipts import verify_proof
 from .routing import MAX_ROUTES_PER_SESSION, evaluate_route_plan
-from .platform_status import TwitchHelixReadOnly, PlatformStatusError
+from .platform_status import TwitchHelixReadOnly, ChaturbateStatsReadOnly, PlatformStatusError
 from .stream_control import StreamPolicy, active_value, public_status, run_obs_action
 from .strategy import build_ten_hour_plan, build_month_plan
 
@@ -129,6 +129,10 @@ def create_app() -> FastAPI:
         twitch_reader = TwitchHelixReadOnly(client_id=twitch_fields[0],
                                           bearer_token=twitch_fields[1],
                                           broadcaster_id=twitch_fields[2])
+    owner_username = os.getenv('ADULTCAM_CHATURBATE_USERNAME', '')
+    owner_token = os.getenv('ADULTCAM_CHATURBATE_STATS_TOKEN', '')
+    owner_stats_reader = (ChaturbateStatsReadOnly(username=owner_username, token=owner_token)
+                          if owner_username and owner_token else None)
     app = FastAPI(title='AdultCam Ω', version='0.9.0', docs_url=None, redoc_url=None)
     app.state.allowed_servers = policy.allowed_servers
     app.state.required_scene = policy.required_scene
@@ -419,6 +423,15 @@ def create_app() -> FastAPI:
             outcome['decision']='BLOCKED_ACTIVE_OR_CLOSED_SESSION'
         return outcome
 
+    @app.get('/api/platforms/chaturbate/status')
+    def chaturbate_owner_statistics(_: Principal = Depends(auth)):
+        if owner_stats_reader is None:
+            raise HTTPException(409, 'Brak lokalnie skonfigurowanego tokenu statystyk właściciela.')
+        try:
+            return owner_stats_reader.read_status()
+        except PlatformStatusError as err:
+            raise HTTPException(503, err.code) from None
+
     @app.get('/api/platforms/twitch/status')
     def twitch_official_read_only(_: Principal = Depends(auth)):
         # Read-only official status for non-adult streams only.
@@ -434,6 +447,11 @@ def create_app() -> FastAPI:
         # External services remain MANUAL_ONLY until authorized integrations and
         # current provider terms have been independently verified.
         providers = []
+        if owner_stats_reader is not None:
+            providers.append({'provider':'CHATURBATE',
+                              'capability':'OFFICIAL_OWNER_STATS_READ_ONLY_CONFIGURED_NOT_LIVE_VERIFIED',
+                              'broadcast_operations':False,
+                              'platform_delivery':'UNVERIFIED'})
         if twitch_reader is not None:
             providers.append({'provider': 'TWITCH',
                               'capability': 'OFFICIAL_READ_ONLY_CONFIGURED_NOT_LIVE_VERIFIED',
