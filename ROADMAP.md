@@ -144,3 +144,9 @@ strumieniowy privacy fail-closed gate oraz twardnienie publicznego ingress.
 Przetestowano lokalny fanout syntetycznego wideo do dwóch odbiorników na 127.0.0.1. Dodano trwałe plany tras i blokowanie konfliktów PUBLIC/PRIVATE. Dowód odbioru własnego serwera nie jest potwierdzeniem platformy. Zewnętrzne adaptery, prawdziwy OBS, produkcyjne maskowanie i kontrola pokoi pozostają otwarte.
 
 Kolejny etap 0.9.0: zatwierdzone odczytowe integracje oficjalnych API, testy realnego sprzętu, ochrona wszystkich torów obrazu i pełne rozwiązanie bezpiecznych przejść PRIVATE.
+
+## Wydanie 0.9.0 — 14.10.2026
+
+Dostarczono stały, oficjalny adapter odczytu stanu Twitch (tylko dla treści zgodnych z regulaminem, niepornograficznych) oraz moduł RGB24, który przy niepewnej detekcji nie przekazuje nieprzetworzonej klatki. Zrealizowano testy na atrapach HTTP i syntetycznych klatkach FFmpeg.
+
+**Otwarte:** połączenie z prawdziwą platformą 18+, rzeczywisty OBS, niezależne potwierdzenie obrazu po stronie platformy, działający detektor twarzy i wpięcie toru ochrony przed OBS, bezpieczne PRIVATE/STOP, Samsung Galaxy S24 Ultra, pełne E2E. Status PARTIAL — NOT_PRODUCTION_READY.
