@@ -7,8 +7,8 @@ from adultcam.rtmp_probe import measure_frames, run_private_probe
 
 
 def test_frame_counter_only_trusts_numeric_receiver_progress():
-    assert measure_frames('frame=2\\nprogress=continue\\nframe=10\\nprogress=end') == 10
-    assert measure_frames('frame=99secret\\nframe=-1\\nframe=none\\n') == 0
+    assert measure_frames('frame=2\nprogress=continue\nframe=10\nprogress=end') == 10
+    assert measure_frames('frame=99secret\nframe=-1\nframe=none\n') == 0
 
 
 def test_invalid_ports_or_modes_are_rejected():
