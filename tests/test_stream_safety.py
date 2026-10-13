@@ -214,7 +214,7 @@ def test_cancel_pending_action_releases_start_lock_without_obs_rpc(api, monkeypa
     assert calls==[]
 
 
-def test_obs_audit_check_enters_and_exits_recovery_from_observed_state(api,monkeypatch):
+def test_obs_audit_check_enters_recovery_and_requires_explicit_restore(api,monkeypatch):
     calls=[]; state={'active':False}
     monkeypatch.setattr(app_module,'obs_request',mock_obs(state,calls))
     sid=ready_session(api)
@@ -225,8 +225,12 @@ def test_obs_audit_check_enters_and_exits_recovery_from_observed_state(api,monke
     assert check.json()['platform_delivery']=='UNVERIFIED'
     state['active']=True
     second=api.post('/api/obs/check')
-    assert second.status_code==200 and second.json()['state']=='LIVE_PUBLIC'
-    assert len([e for e in api.get('/api/dashboard').json()['events'] if e['kind']=='OBS_STATE_DRIFT'])==2
+    assert second.status_code==200 and second.json()['state']=='RECOVERY'
+    assert len([e for e in api.get('/api/dashboard').json()['events'] if e['kind']=='OBS_STATE_DRIFT'])==1
+    restored=api.post('/api/obs/recovery/approve',json={'session_id':sid},
+                      headers={'X-AdultCam-Confirm':'I_APPROVE'})
+    assert restored.status_code==200 and restored.json()['state']=='LIVE_PUBLIC'
+    assert len([e for e in api.get('/api/dashboard').json()['events'] if e['kind']=='RECOVERY_OPERATOR_APPROVED'])==1
 
 
 def test_obs_recovery_active_unapproved_destination_stays_recovery(api,monkeypatch):
