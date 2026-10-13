@@ -1,4 +1,8 @@
-# AdultCam Ω — Control Tower v0.8.0
+# AdultCam Ω — Control Tower v0.9.0
+
+## Wydanie 0.9.0 — oficjalny odczyt stanu i RGB24 fail-closed
+
+Adapter Twitch Helix udostępnia wyłącznie odczyt statusu *uprawnionego kanału niepornograficznego*. Platforma zabrania nadawania treści pornograficznych, dlatego nie jest to integracja dla emisji AdultCam. `LIVE` to wyłącznie status platformy, nie dowód dostarczenia obrazu. Brak zewnętrznej transmisji ani autoryzowanego adaptera platform 18+. Procesor `adultcam.privacy_pipeline` bez zweryfikowanego detektora produkuje jedynie całkowicie czarny obraz. Szczegóły: [docs/PHASE_0_9_OFFICIAL_READ_ONLY_AND_PRIVACY.md](docs/PHASE_0_9_OFFICIAL_READ_ONLY_AND_PRIVACY.md).
 
 ## Wydanie 0.8.0 — planowanie tras i testy lokalnego rozdzielania sygnału
 
