@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adultcam-omega"
+version = "0.3.0"
+description = "Local-first, human-approved operations console with OBS WebSocket v5 adapter"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.35,<1", "websockets>=14,<17"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "httpx>=0.27,<1"]
+
+[project.scripts]
+adultcam-omega = "adultcam.app:serve"
+
+[tool.setuptools]
+packages = ["adultcam"]
+
+[tool.setuptools.package-data]
+adultcam = ["web/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

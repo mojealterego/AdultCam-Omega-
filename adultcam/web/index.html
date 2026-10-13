@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>AdultCam Ω — Control Tower</title>
+  <style>
+    :root { --bg:#0b0d14;--surface:#151a26;--stroke:#303747;--text:#eaf1ff;--muted:#98a6bc;--gold:#e9c889;--accent:#8ca8ff;--good:#80d4b4;--bad:#f4a4ad; }
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top right,#19233d 0%,var(--bg) 48%);font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text)}
+    header{padding:24px max(20px,calc((100vw - 1150px)/2));border-bottom:1px solid var(--stroke);display:flex;justify-content:space-between;align-items:center;gap:12px;background:#101521c9}
+    .brand{font-size:23px;font-weight:750;letter-spacing:.04em}.brand strong{color:var(--gold)}.pill{border:1px solid #53604d;color:var(--good);border-radius:100px;padding:5px 10px;font-size:12px}
+    main{max-width:1185px;padding:20px;margin:auto}h1{font-size:29px;margin:14px 0 5px}h2{font-size:17px;margin:0 0 16px}p{color:var(--muted);margin:7px 0}small,.muted{color:var(--muted)}
+    .overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:25px 0}.tile,.card{border:1px solid var(--stroke);border-radius:14px;background:var(--surface);box-shadow:0 10px 35px #0002}.tile{padding:18px}.tile b{font-size:30px;display:block}.tile span{color:var(--muted);font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{padding:21px;min-width:0}.wide{grid-column:1/-1}
+    input,select,button{font:inherit;border-radius:9px}input,select{border:1px solid #414b5f;background:#0f1420;color:var(--text);padding:10px;width:100%;min-height:43px}label{display:block;color:#c2cee3;font-size:13px;margin:10px 0 5px}
+    button{border:1px solid #56617a;background:#25304a;color:var(--text);cursor:pointer;padding:10px 12px;font-weight:650;min-height:43px}button.primary{background:var(--gold);color:#1e2028;border-color:var(--gold)}button.danger{background:#522a36;border-color:#99616c}button:hover{filter:brightness(1.12)}button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row>*{flex:1 1 110px}.stack{display:grid;gap:9px}.entry{border:1px solid #30394b;padding:11px;border-radius:9px;background:#0e1421;overflow-wrap:anywhere}.entry .row{justify-content:space-between}.entry b{font-weight:620}.entry small{font-size:12px}.entry button{flex:0 0 auto;min-height:35px;font-size:12px}
+    .check{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:#d4dfed;margin:9px 0}.check input{min-height:auto;width:16px;margin:3px 0 0;accent-color:var(--gold)}
+    #notice{border:1px solid var(--stroke);padding:12px;border-radius:9px;margin:12px 0;display:none;white-space:pre-wrap}#notice.visible{display:block}#notice.good{color:var(--good)}#notice.bad{color:var(--bad)}
+    .badge{font-size:11px;color:var(--gold);border:1px solid #665b44;border-radius:14px;padding:3px 7px;font-weight:700;display:inline-block}.status-online{color:var(--good)}.status-offline{color:var(--bad)}.caps{text-transform:uppercase;letter-spacing:.1em;font-size:11px;color:var(--muted)}
+    footer{text-align:center;color:var(--muted);padding:32px;font-size:12px}
+    @media(max-width:800px){.overview{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}header{padding:18px}.card{padding:15px}}
+    @media(max-width:410px){.overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.tile{padding:12px}.tile b{font-size:23px}.brand{font-size:19px}}
+  </style>
+</head>
+<body>
+  <header><div class="brand">ADULTCAM <strong>Ω</strong><div class="caps">Control Tower / Local Runtime v0.2.0</div></div><span class="pill">LOCAL FIRST</span></header>
+  <main>
+    <h1>Centrum operacyjne</h1>
+    <p>System lokalny — statusy profili i księga przychodów pochodzą z wpisów operatora. Odczyt OBS potwierdza wyłącznie stan lokalnego wyjścia, nie dostarczenie transmisji na platformę.</p>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <section class="overview" aria-label="Podsumowanie">
+      <div class="tile"><b id="count-profiles">—</b><span>Obserwowane profile</span></div>
+      <div class="tile"><b id="count-sessions">—</b><span>Sesje</span></div>
+      <div class="tile"><b id="count-actions">—</b><span>Oczekujące operacje</span></div>
+      <div class="tile"><b id="count-events">—</b><span>Zdarzenia audytowe</span></div>
+    </section>
+    <div class="grid">
+      <section class="card">
+        <h2>Weryfikacje operatora</h2>
+        <p>Oświadczenie operatora, nie jest niezależną weryfikacją dokumentów. Ważność: 24 godziny.</p>
+        <form id="attest-form">
+          <label class="check"><input type="checkbox" required name="adults_verified">Wszyscy uczestnicy są pełnoletni i ich wiek został sprawdzony.</label>
+          <label class="check"><input type="checkbox" required name="informed_consent">Uczestnicy wyrazili świadomą zgodę na planowane działania.</label>
+          <label class="check"><input type="checkbox" required name="account_authorized">Mam uprawnienie do prowadzenia powiązanych kont.</label>
+          <label class="check"><input type="checkbox" required name="terms_checked">Sprawdziłem aktualne zasady platformy i wymagania prawne.</label>
+          <div class="row"><button class="primary" type="submit">Zapisz oświadczenie</button><small id="attestation-status">Nie sprawdzono</small></div>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Połączenie OBS</h2>
+        <p>Sterowanie przez lokalne OBS WebSocket v5 (port 4455). Uruchom OBS na tym samym komputerze co serwer.</p>
+        <div class="row"><button id="obs-check">Sprawdź połączenie OBS</button><button id="obs-audit">Audyt i synchronizacja OBS</button></div>
+        <div class="entry" style="margin-top:12px" id="obs-status">Nie sprawdzono</div>
+        <p>Włączenie wymaga zdefiniowanej listy zatwierdzonych adresów RTMP(S), lokalnego uwierzytelnionego OBS i osobnej zgody. Status LIVE oznacza wyłącznie aktywność wyjścia OBS — odbiór na platformie jest niezweryfikowany.</p>
+      </section>
+      <section class="card">
+        <h2>Monitor bezpieczeństwa OBS</h2>
+        <p>Odczyt wyłącznie lokalnego OBS. Błędy i odstępstwa od konfiguracji uruchamiają stan RECOVERY. Wznowienie LIVE wymaga ręcznego audytu. Automatyczny polling wymaga osobnego, świadomie uruchomionego procesu monitora.</p>
+        <div class="row"><button id="monitor-check">Wykonaj pojedynczy pomiar</button><button id="monitor-reload">Odśwież incydenty</button></div>
+        <div class="stack" id="monitor-list" style="margin-top:13px"></div>
+      </section>
+      <section class="card">
+        <h2>Lista obserwowanych profili</h2>
+        <form id="profile-form">
+          <div class="row"><div><label>Platforma</label><input name="platform" placeholder="np. ShowUp" required maxlength="80"></div><div><label>Alias</label><input name="alias" placeholder="publiczna nazwa" required maxlength="120"></div></div>
+          <label>Publiczny adres HTTPS (opcjonalnie)</label><input name="public_url" type="url" placeholder="https://example.org/profil">
+          <p>Brak automatycznego pobierania statusów. Obserwacje są wpisywane ręcznie i oznaczane jako MANUAL.</p>
+          <button class="primary" type="submit">Dodaj profil</button>
+        </form>
+        <div class="stack" id="profiles-list" style="margin-top:15px"></div>
+      </section>
+      <section class="card">
+        <h2>Sesje i kontrola transmisji</h2>
+        <form id="session-form"><label>Nazwa sesji</label><div class="row"><input name="title" required maxlength="140" placeholder="Sesja wieczorna"><button type="submit" class="primary">Utwórz</button></div></form>
+        <div class="stack" id="sessions-list" style="margin-top:15px"></div>
+      </section>
+      <section class="card">
+        <h2>Rejestr przychodów</h2>
+        <p>Ręczne wpisy. Brak integracji z płatnościami i wypłatami.</p>
+        <form id="ledger-form">
+          <div class="row"><div><label>Platforma</label><input name="platform" placeholder="Platforma" required></div><div><label>Waluta</label><select name="currency"><option>USD</option><option>PLN</option><option>EUR</option></select></div></div>
+          <div class="row"><div><label>Kategoria</label><select name="category"><option>TIP</option><option>PRIVATE</option><option>SUBSCRIPTION</option><option>OTHER</option><option>REFUND</option></select></div><div><label>Kwota (np. 12.50)</label><input name="amount" type="number" min="0.01" step="0.01" required></div></div>
+          <button class="primary" type="submit">Zapisz transakcję</button>
+        </form>
+        <div class="stack" id="ledger-totals" style="margin-top:15px"></div>
+      </section>
+      <section class="card">
+        <h2>Kolejka zatwierdzeń</h2>
+        <p>Operacje OBS wykonują się dopiero po świadomym zatwierdzeniu. Status UNKNOWN blokuje ponowny START do czasu zatwierdzonego uzgodnienia z OBS. Awaryjny STOP pozostaje dostępny.</p>
+        <div class="stack" id="actions-list"></div>
+      </section>
+      <section class="card wide">
+        <h2>SHOWRUNNER Ω — plan operacyjny</h2>
+        <p>Szablony planowania, nie potwierdzony harmonogram platform ani prognoza finansowa.</p>
+        <div class="row"><button id="strategy-10h">Plan 10-godzinny</button><button id="strategy-30d">Plan 30 dni</button></div>
+        <div class="stack" id="strategy-list" style="margin-top:13px"></div>
+      </section>
+      <section class="card wide">
+        <h2>Dziennik zdarzeń</h2>
+        <button id="reload">Odśwież dane</button>
+        <div class="stack" id="events-list" style="margin-top:13px"></div>
+      </section>
+    </div>
+  </main>
+  <footer>AdultCam Ω — lokalny demonstrator wykonawczy. Brak aktywnych połączeń z serwisami dla dorosłych.</footer>
+<script>
+'use strict';
+const el = id => document.getElementById(id);
+const node = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = String(text); if(cls) n.className = cls; return n; };
+function note(text, good=true){ const n=el('notice');n.textContent=text;n.className='visible '+(good?'good':'bad'); }
+async function api(path, method='GET', data=null, approve=false){
+  const headers = {'X-AdultCam-Request':'1'};
+  if(data !== null) headers['Content-Type']='application/json';
+  if(approve) headers['X-AdultCam-Confirm']='I_APPROVE';
+  const r=await fetch(path,{method,headers,body:data===null?undefined:JSON.stringify(data),cache:'no-store',credentials:'same-origin'});
+  const j=await r.json(); if(!r.ok) throw Error(typeof j.detail==='string'?j.detail:JSON.stringify(j.detail));return j;
+}
+function box(title,sub){let d=node('div',null,'entry');d.append(node('b',title),node('div',sub,'muted'));return d;}
+function btn(label,handler,danger=false){let b=node('button',label,danger?'danger':'');b.type='button';b.onclick=async()=>{try{await handler();await load()}catch(e){note(e.message,false)}};return b;}
+function renderProfiles(list){let root=el('profiles-list');root.replaceChildren();if(!list.length)root.append(node('p','Brak profili.'));
+  for(const p of list){let d=box(p.platform+' · '+p.alias,'Status: '+p.status+' · wpis ręczny');
+    let row=node('div',null,'row');for(const status of ['ONLINE','OFFLINE','UNVERIFIED'])row.append(btn(status,async()=>{await api('/api/profiles/'+p.id+'/observations','POST',{status,source:'MANUAL'});note('Zaktualizowano ręczną obserwację.')}));d.append(row);root.append(d)}
+}
+function renderSessions(list, unresolved){let root=el('sessions-list');root.replaceChildren();if(!list.length)root.append(node('p','Brak sesji.'));
+  for(const s of list){let d=box('#'+s.id+' · '+s.title,'Stan: '+s.state);let row=node('div',null,'row');
+    if(s.state==='PREPARE') row.append(btn('Oznacz READY',async()=>{await api('/api/sessions/'+s.id+'/transition','POST',{to_state:'READY'});note('Sesja gotowa.')}));
+    if(s.state==='PREPARE'||s.state==='READY'||s.state==='ENDING')row.append(btn('Zamknij sesję',async()=>{await api('/api/sessions/'+s.id+'/transition','POST',{to_state:'CLOSED'});note('Sesja zamknięta.')}));
+    if(s.state==='READY')row.append(btn('Przygotuj START OBS',()=>prepare('start_stream',s.id)));
+    if(s.state==='LIVE_PUBLIC'||s.state==='RECOVERY'||unresolved.some(x=>x.session_id===s.id))row.append(btn('Przygotuj STOP OBS',()=>prepare('stop_stream',s.id),true));
+    d.append(row);root.append(d);
+  }
+}
+async function prepare(operation,session_id){const a=await api('/api/actions','POST',{operation,session_id,idempotency_key:crypto.randomUUID()});note('Utworzono zamiar #'+a.id+'. Wymaga oddzielnego zatwierdzenia.');}
+function renderActions(list){let root=el('actions-list');root.replaceChildren();if(!list.length)root.append(node('p','Brak operacji.'));
+  for(const a of list){let d=box('#'+a.id+' · '+a.operation+' (sesja #'+a.session_id+')',a.status+' · ryzyko '+a.risk_class);
+    if(a.status==='PENDING_APPROVAL')d.append(btn('ZATWIERDŹ I WYKONAJ',async()=>{
+      const phrase=prompt('Operacja może uruchomić/zatrzymać rzeczywiste nadawanie OBS. Wpisz dokładnie ZATWIERDZAM:');
+      if(phrase!=='ZATWIERDZAM')return;
+      let result=await api('/api/actions/'+a.id+'/approve','POST',null,true);
+      note('Potwierdzenie z OBS: '+JSON.stringify(result.receipt));
+    },a.operation==='stop_stream'));
+    if(a.status==='PENDING_APPROVAL')d.append(btn('ANULUJ ZAMIAR',async()=>{
+      await api('/api/actions/'+a.id+'/cancel','POST');
+      note('Anulowano niewykonaną operację #'+a.id+'.');
+    }));
+    if(a.status==='UNKNOWN' && !window.reconciledIds.has(a.id))d.append(btn('UZGODNIJ STAN Z OBS',async()=>{
+      const phrase=prompt('Sprawdź najpierw stan OBS. Uzgodnienie odczytuje bieżący stan wyjścia OBS, bez weryfikacji platformy. Wpisz ZATWIERDZAM:');
+      if(phrase!=='ZATWIERDZAM')return;
+      const r=await api('/api/obs/reconcile','POST',{action_id:a.id},true);
+      note('Uzgodnienie stanu OBS: '+r.result_code+'; stan sesji: '+r.session_state+'; dostarczenie na platformę: niezweryfikowane.');
+    }));
+    root.append(d)}
+}
+function renderEvents(list){let root=el('events-list');root.replaceChildren();if(!list.length)root.append(node('p','Brak zdarzeń.'));
+  for(const e of list.slice(0,30)){let d=box(e.kind+' · '+e.subject,e.observed_at+' · '+JSON.stringify(e.detail));root.append(d)}
+}
+async function refreshMonitor(){
+  const status=await api('/api/monitor/status');const root=el('monitor-list');root.replaceChildren();
+  root.append(box('Ostatni pomiar: '+status.last_result,
+      (status.last_checked_at||'Jeszcze nie wykonano')+' · odbiór na platformie: NIEZWERYFIKOWANY'));
+  for(const i of status.open_incidents)root.append(box('INCYDENT #'+i.id+' · '+i.reason_code,
+    i.subject+' · wystąpienia: '+i.occurrences+' · ostatnio: '+i.last_seen_at));
+  if(!status.open_incidents.length)root.append(node('div','Brak otwartych incydentów w lokalnej bazie.','muted'));
+}
+async function load(){let d=await api('/api/dashboard');el('count-profiles').textContent=d.profiles.length;el('count-sessions').textContent=d.sessions.length;el('count-actions').textContent=d.actions.filter(a=>a.status==='PENDING_APPROVAL').length;el('count-events').textContent=d.events.length;
+  el('attestation-status').textContent=d.attestation_current?'Oświadczenie aktualne':'Brak aktualnego oświadczenia';
+  window.reconciledIds=new Set(d.actions.filter(a=>a.status==='UNKNOWN').map(a=>a.id).filter(id=>
+    !(d.unresolved_obs_actions || []).some(x=>x.id===id)));
+  renderProfiles(d.profiles);renderSessions(d.sessions,d.unresolved_obs_actions||[]);renderActions(d.actions);renderEvents(d.events);
+  await refreshMonitor();
+  let r=el('ledger-totals');r.replaceChildren();const totals=Object.entries(d.revenue_by_currency);
+  if(!totals.length)r.append(node('p','Nie zapisano transakcji.'));
+  for(const [currency,amount] of totals)r.append(box(currency,(amount/100).toFixed(2)+' '+currency));
+}
+function bindForm(id,make,endpoint){el(id).addEventListener('submit',async ev=>{ev.preventDefault();try{const data=make(new FormData(ev.currentTarget));await api(endpoint,'POST',data);ev.currentTarget.reset();note('Zapisano.');await load()}catch(e){note(e.message,false)}})}
+bindForm('profile-form',f=>({platform:f.get('platform'),alias:f.get('alias'),public_url:f.get('public_url')||null}),'/api/profiles');
+bindForm('session-form',f=>({title:f.get('title')}),'/api/sessions');
+bindForm('attest-form',f=>({adults_verified:f.has('adults_verified'),informed_consent:f.has('informed_consent'),account_authorized:f.has('account_authorized'),terms_checked:f.has('terms_checked')}),'/api/attestations');
+bindForm('ledger-form',f=>({platform:f.get('platform'),currency:f.get('currency'),category:f.get('category'),amount_minor:Math.round(parseFloat(f.get('amount'))*100)*(f.get('category')==='REFUND'?-1:1)}),'/api/ledger');
+el('obs-check').onclick=async()=>{try{let d=await api('/api/obs/status');el('obs-status').textContent=JSON.stringify(d);note('Odczytano lokalny stan OBS. Nie sprawdzono odbioru na platformie.')}catch(e){note(e.message,false)}};
+el('monitor-check').onclick=async()=>{try{const r=await api('/api/monitor/check','POST');await load();note('Pomiar: '+r.outcome+'; '+(r.reason_code||'bez ostrzeżeń'),r.outcome!=='ALERT')}catch(e){note(e.message,false)}};
+el('monitor-reload').onclick=async()=>{try{await refreshMonitor();note('Odświeżono stan incydentów.')}catch(e){note(e.message,false)}};
+el('obs-audit').onclick=async()=>{try{let d=await api('/api/obs/check','POST');el('obs-status').textContent=JSON.stringify(d);note('Uzgodniono stan sesji z lokalnym wyjściem OBS. Platforma niezweryfikowana.');await load()}catch(e){note(e.message,false)}};
+async function displayStrategy(path,kind){try{const r=await api(path);let root=el('strategy-list');root.replaceChildren();for(const slot of r.plan){const head=kind==='10h'?'Godzina '+slot.hour+' · '+slot.goal:'Dzień '+slot.day+' · '+slot.phase;root.append(box(head,kind==='10h'?slot.operator_brief:slot.goal));}note('Wyświetlono szablon '+kind+'.')}catch(e){note(e.message,false)}}
+el('strategy-10h').onclick=()=>displayStrategy('/api/strategy/ten-hour','10h');
+el('strategy-30d').onclick=()=>displayStrategy('/api/strategy/thirty-day','30d');
+el('reload').onclick=async()=>{try{await load();note('Odświeżono.')}catch(e){note(e.message,false)}};
+load().catch(e=>note(e.message,false));
+</script>
+</body>
+</html>
