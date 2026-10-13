@@ -58,6 +58,25 @@ function renderActions(list){let root=el('actions-list');root.replaceChildren();
     }));
     root.append(d)}
 }
+async function refreshRoutes(){
+  const select=el('route-session');
+  const list=el('routes-list');
+  const sid=Number(select.value);
+  list.replaceChildren();
+  if(!sid)return;
+  const result=await api('/api/routes?session_id='+sid);
+  for(const item of result.routes){
+    const entry=box(item.route_key+' · '+item.platform,item.audience+' · '+item.capability+' · PLAN_ONLY');
+    if(canOperate())entry.append(btn('Usuń plan',async()=>{await api('/api/routes/'+item.id,'DELETE')},true));
+    list.append(entry);
+  }
+}
+async function evaluateRoutes(audience){
+  const sid=Number(el('route-session').value);
+  if(!sid)throw Error('Wybierz sesję');
+  const result=await api('/api/routes/evaluate?session_id='+sid+'&audience='+audience);
+  el('routes-evaluation').textContent=result.decision+' · '+result.owned_receivers_with_fresh_proof+'/'+result.route_count+' · platforma: NIEZWERYFIKOWANA';
+}
 function renderEvents(list){let root=el('events-list');root.replaceChildren();if(!list.length)root.append(node('p','Brak zdarzeń.'));
   for(const e of list.slice(0,30)){let d=box(e.kind+' · '+e.subject,e.observed_at+' · '+JSON.stringify(e.detail));root.append(d)}
 }
