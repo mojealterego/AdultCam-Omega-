@@ -107,6 +107,25 @@ async function load(){let d=await api('/api/dashboard');el('count-profiles').tex
   for(const [currency,amount] of totals)r.append(box(currency,(amount/100).toFixed(2)+' '+currency));
 }
 function bindForm(id,make,endpoint){el(id).addEventListener('submit',async ev=>{ev.preventDefault();try{const data=make(new FormData(ev.currentTarget));await api(endpoint,'POST',data);ev.currentTarget.reset();note('Zapisano.');await load()}catch(e){note(e.message,false)}})}
+el('route-form').addEventListener('submit', async event=>{
+  event.preventDefault();
+  try {
+    const form=new FormData(event.currentTarget);
+    const capability=form.get('capability');
+    await api('/api/routes','POST',{
+      session_id:Number(form.get('session_id')), route_key:form.get('route_key'),
+      platform:form.get('platform'), audience:form.get('audience'), capability,
+      receiver_id:capability==='OWNED_INGEST_TEST'?(form.get('receiver_id')||null):null
+    });
+    note('Zapisano wyłącznie plan. Nie wysłano żadnej transmisji.');
+    await load();
+  }catch(error){note(error.message,false)}
+});
+el('route-session').onchange=()=>refreshRoutes().catch(error=>note(error.message,false));
+for(const audience of ['PUBLIC','PRIVATE']){
+  el('routes-evaluate-'+audience.toLowerCase()).onclick=()=>
+    evaluateRoutes(audience).catch(error=>note(error.message,false));
+}
 bindForm('profile-form',f=>({platform:f.get('platform'),alias:f.get('alias'),public_url:f.get('public_url')||null}),'/api/profiles');
 bindForm('session-form',f=>({title:f.get('title')}),'/api/sessions');
 bindForm('attest-form',f=>({adults_verified:f.has('adults_verified'),informed_consent:f.has('informed_consent'),account_authorized:f.has('account_authorized'),terms_checked:f.has('terms_checked')}),'/api/attestations');
@@ -159,7 +178,7 @@ async function bootstrap(){
     el('ledger-form').closest('section').hidden=true;
   }
   if(!canOperate()){
-    for(const id of ['session-form','profile-form','obs-audit','monitor-check'])el(id).hidden=true;
+    for(const id of ['session-form','profile-form','obs-audit','monitor-check','route-form'])el(id).hidden=true;
   }
   await load();
 }
