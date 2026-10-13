@@ -74,3 +74,22 @@ Nie łącz zewnętrznych platform i nie aktywuj płatnych automatyzacji bez zgod
 - **Testy:** `tests/test_monitor.py` oraz dotychczasowe regresje.
 - **Nie zrealizowano:** real-device OBS/RTMPS E2E, niezależne potwierdzenie odbioru, konektory platform, OIDC/RBAC, powiadomienia zewnętrzne, mechanizm maskowania fail-closed, zabezpieczone środowisko produkcyjne.
 - **Następna bramka 0.4.0:** przeprowadzić testy na prawdziwym OBS i prywatnym odbiorniku, wdrożyć kontrolowaną warstwę mobilnego OIDC/TLS, rozdzielić role, dodać autoryzowany adapter odczytowy jednej platformy dopiero po weryfikacji aktualnego API i regulaminów.
+
+## Postęp 0.4.0 — kontrolowany odbiór i świadome RECOVERY (13.10.2026)
+
+**Zaimplementowano i przetestowano lokalnie:**
+- Regresję bezpieczeństwa `RECOVERY → LIVE_PUBLIC`: odczyt OBS nie uruchamia już automatycznego wznowienia.
+- Potwierdzane przez człowieka przywrócenie sesji z weryfikacją stanu, celu, wcześniejszego START i audytem.
+- Ograniczenie nieszyfrowanego RTMP do loopback; zdalny stream target tylko RTMPS.
+- Rzeczywisty test przyjęcia syntetycznych klatek przez lokalny odbiornik FFmpeg oraz tryb testowy operatora OBS.
+- Instrukcję dowodową prywatnego OBS RTMP oraz aktualizację UI i CI.
+
+**Nie zrealizowano / niezweryfikowano:** rzeczywistej instalacji OBS,
+uprawnionego odbiorcy na platformie, RTMPS E2E, zewnętrznego API,
+OIDC/TLS/RBAC, fail-closed ochrony obrazu, testu Samsung S24 Ultra.
+Wersja 0.4.0 nie zamyka globalnego P0 i nie jest produkcyjna.
+
+**Następny priorytet 0.5.0:** weryfikowalny test prawdziwej instalacji OBS i odbiorcy RTMPS;
+bezpieczna zdalna uwierzytelniona konsola wielooperatorska (OIDC/RBAC),
+a następnie autoryzowany adapter odczytowy konkretnej platformy
+po potwierdzeniu jej aktualnych zasad i uprawnień.
