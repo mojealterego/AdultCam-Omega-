@@ -14,6 +14,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, field_validator
 
+from .auth import Principal, load_oidc
 from .database import Database, utc_now
 from .domain import action_policy, session_transition_allowed
 from .obs import request as obs_request
@@ -91,14 +92,15 @@ class LedgerIn(BaseModel):
 
 
 def create_app() -> FastAPI:
+    oidc = load_oidc()
     password = os.getenv('ADULTCAM_ADMIN_PASSWORD', '')
-    if len(password) < 16:
+    if oidc is None and len(password) < 16:
         raise RuntimeError('Ustaw ADULTCAM_ADMIN_PASSWORD (co najmniej 16 znaków).')
     db = Database(os.getenv('ADULTCAM_DB_PATH', str(Path.home() / '.adultcam-omega' / 'adultcam.sqlite3')))
     obs_url = os.getenv('OBS_WS_URL','ws://127.0.0.1:4455')
     obs_password = os.getenv('OBS_WS_PASSWORD','')
     policy = StreamPolicy.from_env(os.getenv('ADULTCAM_OBS_ALLOWED_SERVERS', ''))
-    app = FastAPI(title='AdultCam Ω', version='0.4.0', docs_url=None, redoc_url=None)
+    app = FastAPI(title='AdultCam Ω', version='0.5.0', docs_url=None, redoc_url=None)
     app.state.allowed_servers = policy.allowed_servers
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1'])
 
@@ -115,13 +117,25 @@ def create_app() -> FastAPI:
             "img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
         return response
 
-    def auth(credentials: HTTPBasicCredentials | None = Depends(basic)):
+    def auth(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)) -> Principal:
+        if oidc is not None:
+            authorization = request.headers.get('Authorization', '')
+            if not authorization.startswith('Bearer '):
+                raise HTTPException(401, 'Wymagany token Bearer.', headers={'WWW-Authenticate': 'Bearer'})
+            try:
+                return oidc.verify(authorization[7:])
+            except PermissionError:
+                raise HTTPException(403, 'Brak uprawnień AdultCam.')
+            except ValueError:
+                raise HTTPException(401, 'Nieprawidłowy token.', headers={'WWW-Authenticate': 'Bearer'})
         if (credentials is None or not secrets.compare_digest(credentials.username, 'operator')
                 or not secrets.compare_digest(credentials.password, password)):
             raise HTTPException(401, 'Uwierzytelnienie wymagane.', headers={'WWW-Authenticate':'Basic realm="AdultCam Omega"'})
-        return 'operator'
+        return Principal(subject='operator', role='admin', source='local_basic')
 
-    def mutating(request: Request, user: str = Depends(auth)):
+    def mutating(request: Request, user: Principal = Depends(auth)):
+        if not user.allows('operator'):
+            raise HTTPException(403, 'Operator ma wymagane uprawnienia; dostęp tylko do odczytu.')
         origin = request.headers.get('origin')
         if origin:
             here = f'{request.url.scheme}://{request.url.netloc}'
@@ -129,6 +143,11 @@ def create_app() -> FastAPI:
                 raise HTTPException(403, 'Nieprawidłowy Origin.')
         if request.headers.get('X-AdultCam-Request') != '1':
             raise HTTPException(403, 'Brak nagłówka anty-CSRF.')
+        return user
+
+    def admin_mutating(user: Principal = Depends(mutating)) -> Principal:
+        if not user.allows('admin'):
+            raise HTTPException(403, 'Wymagana rola admin.')
         return user
 
     def get_attested(c) -> bool:
@@ -149,7 +168,11 @@ def create_app() -> FastAPI:
 
     @app.get('/api/health')
     def health():
-        return {'status':'OK', 'version':'0.4.0','external_platform_integrations':'NOT_CONNECTED'}
+        return {'status':'OK', 'version':'0.5.0','external_platform_integrations':'NOT_CONNECTED'}
+
+    @app.get('/api/auth/me')
+    def auth_me(user: Principal = Depends(auth)):
+        return {'subject':user.subject, 'role':user.role, 'source':user.source}
 
     @app.get('/api/dashboard')
     def dashboard(_: str = Depends(auth)):
@@ -189,14 +212,14 @@ def create_app() -> FastAPI:
                             StreamPolicy(app.state.allowed_servers))
 
     @app.post('/api/attestations',status_code=201)
-    def attest(body: AttestationIn, _: str = Depends(mutating)):
+    def attest(body: AttestationIn, user: Principal = Depends(admin_mutating)):
         if not all([body.adults_verified,body.informed_consent,body.account_authorized,body.terms_checked]):
             raise HTTPException(409, 'Wszystkie wymagane oświadczenia muszą być prawdziwe.')
         when = utc_now()
         with db.connect() as c:
             result=c.execute('INSERT INTO attestations(attested_at,adults_verified,informed_consent,account_authorized,terms_checked) VALUES(?,?,?,?,?)',
                              (when,1,1,1,1))
-            db.event(c,'ATTESTATION_RECORDED',str(result.lastrowid),{'kind':'operator_self_attestation'},str(uuid.uuid4()))
+            db.event(c,'ATTESTATION_RECORDED',str(result.lastrowid),{'kind':'operator_self_attestation', 'operator_subject':user.subject, 'auth_source':user.source},str(uuid.uuid4()))
         return {'id':result.lastrowid,'recorded_at':when,'verification':'OPERATOR_SELF_ATTESTATION_ONLY'}
 
     @app.post('/api/profiles',status_code=201)
@@ -285,7 +308,7 @@ def create_app() -> FastAPI:
             return {'id':cur.lastrowid,'status':'PENDING_APPROVAL','risk':decision.risk_class}
 
     @app.post('/api/actions/{aid}/approve')
-    def approve(aid:int, request:Request, _:str=Depends(mutating)):
+    def approve(aid:int, request:Request, user:Principal=Depends(mutating)):
         if request.headers.get('X-AdultCam-Confirm') != 'I_APPROVE':
             raise HTTPException(403,'Wymagane świadome zatwierdzenie X-AdultCam-Confirm: I_APPROVE.')
         with db.connect() as c:
@@ -315,7 +338,7 @@ def create_app() -> FastAPI:
             if policy_decision.verdict not in ('ALLOW','ALLOW_WITH_CONDITIONS'):
                 raise HTTPException(409,policy_decision.reason)
             c.execute("UPDATE action_intents SET status='EXECUTING',updated_at=? WHERE id=?",(utc_now(),aid))
-            db.event(c,'ACTION_APPROVED',str(aid),{'operation':action['operation']},str(uuid.uuid4()))
+            db.event(c,'ACTION_APPROVED',str(aid),{'operation':action['operation'], 'operator_subject':user.subject, 'auth_source':user.source},str(uuid.uuid4()))
         receipt = run_obs_action(obs_request, obs_url, obs_password, action['operation'],
                                  StreamPolicy(app.state.allowed_servers))
         with db.connect() as c:
@@ -389,7 +412,7 @@ def create_app() -> FastAPI:
                     'destination_policy':denied,'platform_delivery':'UNVERIFIED'}
 
     @app.post('/api/obs/recovery/approve')
-    def approve_recovery(body: RecoveryApprovalIn, request: Request, _: str = Depends(mutating)):
+    def approve_recovery(body: RecoveryApprovalIn, request: Request, user: Principal = Depends(mutating)):
         """Human-approved, read-only recovery: no OBS broadcast command."""
         if request.headers.get('X-AdultCam-Confirm') != 'I_APPROVE':
             raise HTTPException(403, 'Wymagane świadome zatwierdzenie przywrócenia stanu OBS.')
@@ -441,13 +464,13 @@ def create_app() -> FastAPI:
                       ('LIVE_PUBLIC', utc_now(), body.session_id))
             db.event(c, 'RECOVERY_OPERATOR_APPROVED', str(body.session_id),
                      {'from': 'RECOVERY', 'to': 'LIVE_PUBLIC', 'via': 'OBS_READ_ONLY',
-                      'platform_delivery': 'UNVERIFIED'}, str(uuid.uuid4()))
+                      'platform_delivery': 'UNVERIFIED', 'operator_subject':user.subject, 'auth_source':user.source}, str(uuid.uuid4()))
             return {'session_id': body.session_id, 'state': 'LIVE_PUBLIC',
                     'obs_command_sent': False, 'platform_delivery': 'UNVERIFIED',
                     'operator_approval': 'RECORDED'}
 
     @app.post('/api/obs/reconcile')
-    def reconcile(body:ReconcileIn, request:Request, _:str=Depends(mutating)):
+    def reconcile(body:ReconcileIn, request:Request, user:Principal=Depends(mutating)):
         if request.headers.get('X-AdultCam-Confirm') != 'I_APPROVE':
             raise HTTPException(403,'Wymagane potwierdzenie operatora przed uzgodnieniem OBS.')
         with db.connect() as c:
@@ -477,9 +500,9 @@ def create_app() -> FastAPI:
                 raise HTTPException(503,'OBS nie zwrócił wiarygodnego statusu. Uzgodnienie nie zostało zapisane.')
             code='OBS_ACTIVE' if observed else 'OBS_INACTIVE'
             c.execute('INSERT INTO obs_reconciliations(action_id,observed_active,checked_at,operator,result_code) VALUES(?,?,?,?,?)',
-                      (body.action_id,int(observed),utc_now(),'operator',code))
+                      (body.action_id,int(observed),utc_now(),user.subject,code))
             db.event(c,'OBS_RECONCILED',str(body.action_id),
-                     {'observed_active':observed,'platform_delivery':'UNVERIFIED'},str(uuid.uuid4()))
+                     {'observed_active':observed,'platform_delivery':'UNVERIFIED', 'operator_subject':user.subject},str(uuid.uuid4()))
             session=require_session(c,action['session_id'])
             new_state=None
             if observed and action['operation']=='start_stream' and session['state']=='READY':
@@ -514,11 +537,11 @@ def create_app() -> FastAPI:
             return {'connection':'NEEDS_VERIFICATION','error_type':type(exc).__name__}
 
     @app.post('/api/ledger',status_code=201)
-    def new_ledger(body:LedgerIn, _:str=Depends(mutating)):
+    def new_ledger(body:LedgerIn, user:Principal=Depends(admin_mutating)):
         with db.connect() as c:
             cur=c.execute('INSERT INTO ledger(platform,category,currency,amount_minor,created_at) VALUES(?,?,?,?,?)',
                           (body.platform,body.category,body.currency,body.amount_minor,utc_now()))
-            db.event(c,'LEDGER_MANUAL_ENTRY',str(cur.lastrowid),{'amount_minor':body.amount_minor,'currency':body.currency},str(uuid.uuid4()))
+            db.event(c,'LEDGER_MANUAL_ENTRY',str(cur.lastrowid),{'amount_minor':body.amount_minor,'currency':body.currency, 'operator_subject':user.subject, 'auth_source':user.source},str(uuid.uuid4())
             return {'id':cur.lastrowid, 'source':'MANUAL'}
 
     return app
