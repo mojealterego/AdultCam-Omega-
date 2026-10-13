@@ -203,7 +203,7 @@ Zestaw zawiera test prawdziwej komunikacji WebSocket z **lokalnym, sztucznym ser
 - Brak osobnych, zatwierdzonych adapterów platform, bezpiecznego multistreamingu i synchronizacji prywatnych pokoi.
 - Brak działającej anonimizacji twarzy z trybem fail-closed i weryfikacji geoblokad.
 - Brak niezależnej weryfikacji wieku/zgód; oświadczenie operatora nie jest takim dowodem.
-- Brak zdalnego OIDC/mTLS, RBAC, ochrony przed wieloma operatorami, szyfrowanych kopii zapasowych i automatycznego monitoringu.
+- OIDC JWT/RBAC dostępne jedynie dla API w trybie opcjonalnym; brak produkcyjnego logowania OIDC w panelu WWW, warstwy HTTPS/mTLS, ochrony przed wieloma operatorami oraz szyfrowanych kopii zapasowych.
 - Brak testu na Samsung Galaxy S24 Ultra. Obsługa OBS na innym komputerze wymaga osobnej, bezpiecznej architektury sieciowej — aktualny backend komunikuje się wyłącznie z lokalnym OBS.
 
 **Uwaga:** funkcjonalny endpoint START/STOP nie oznacza gotowości do produkcyjnych transmisji. Przed każdą rzeczywistą transmisją operator musi niezależnie zweryfikować uczestników, zgody, miejsce publikacji, regulamin oraz ochronę prywatności.
