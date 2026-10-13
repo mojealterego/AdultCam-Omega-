@@ -1,4 +1,4 @@
-# AdultCam Ω — Control Tower v0.2.0
+# AdultCam Ω — Control Tower v0.3.0
 
 ## Wydanie 0.3.0 — monitoring bezpieczeństwa i repozytorium główne (13.10.2026)
 
