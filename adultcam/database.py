@@ -83,6 +83,18 @@ class Database:
                     last_result TEXT NOT NULL, last_reason_code TEXT,
                     last_observed_active INTEGER CHECK(last_observed_active IN (0,1))
                 );
+                CREATE TABLE IF NOT EXISTS ingest_receipts (
+                    id INTEGER PRIMARY KEY,
+                    receiver_id TEXT NOT NULL,
+                    session_id INTEGER NOT NULL REFERENCES sessions(id),
+                    nonce TEXT NOT NULL,
+                    observed_at TEXT NOT NULL,
+                    received_frames INTEGER NOT NULL CHECK(received_frames > 0),
+                    recorded_at TEXT NOT NULL,
+                    UNIQUE(receiver_id, nonce)
+                );
+                CREATE INDEX IF NOT EXISTS ingest_receipts_by_session
+                    ON ingest_receipts(session_id, recorded_at);
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY, kind TEXT NOT NULL, subject TEXT NOT NULL,
                     detail_json TEXT NOT NULL, observed_at TEXT NOT NULL,
