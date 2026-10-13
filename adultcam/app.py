@@ -22,6 +22,7 @@ from .obs import request as obs_request
 from .monitor import monitor_once, monitor_status
 from .ingest_receipts import verify_proof
 from .routing import MAX_ROUTES_PER_SESSION, evaluate_route_plan
+from .platform_status import TwitchHelixReadOnly, PlatformStatusError
 from .stream_control import StreamPolicy, active_value, public_status, run_obs_action
 from .strategy import build_ten_hour_plan, build_month_plan
 
@@ -120,7 +121,15 @@ def create_app() -> FastAPI:
     obs_password = os.getenv('OBS_WS_PASSWORD','')
     policy = StreamPolicy.from_env(os.getenv('ADULTCAM_OBS_ALLOWED_SERVERS', ''),
                                    os.getenv('ADULTCAM_PRIVACY_SCENE'))
-    app = FastAPI(title='AdultCam Ω', version='0.8.0', docs_url=None, redoc_url=None)
+    twitch_fields = (os.getenv('ADULTCAM_TWITCH_CLIENT_ID', ''),
+                     os.getenv('ADULTCAM_TWITCH_TOKEN', ''),
+                     os.getenv('ADULTCAM_TWITCH_BROADCASTER_ID', ''))
+    twitch_reader = None
+    if all(twitch_fields):
+        twitch_reader = TwitchHelixReadOnly(client_id=twitch_fields[0],
+                                          bearer_token=twitch_fields[1],
+                                          broadcaster_id=twitch_fields[2])
+    app = FastAPI(title='AdultCam Ω', version='0.9.0', docs_url=None, redoc_url=None)
     app.state.allowed_servers = policy.allowed_servers
     app.state.required_scene = policy.required_scene
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1'])
@@ -410,11 +419,28 @@ def create_app() -> FastAPI:
             outcome['decision']='BLOCKED_ACTIVE_OR_CLOSED_SESSION'
         return outcome
 
+    @app.get('/api/platforms/twitch/status')
+    def twitch_official_read_only(_: Principal = Depends(auth)):
+        # Read-only official status for non-adult streams only.
+        if twitch_reader is None:
+            raise HTTPException(409, 'Oficjalny adapter odczytowy Twitch nie jest skonfigurowany.')
+        try:
+            return twitch_reader.read_status()
+        except PlatformStatusError as error:
+            raise HTTPException(503, error.code) from None
+
     @app.get('/api/platforms/capabilities')
     def platform_capabilities(_: str = Depends(auth)):
         # External services remain MANUAL_ONLY until authorized integrations and
         # current provider terms have been independently verified.
-        return {'verified_integrations':0,'providers':[],
+        providers = []
+        if twitch_reader is not None:
+            providers.append({'provider': 'TWITCH',
+                              'capability': 'OFFICIAL_READ_ONLY_CONFIGURED_NOT_LIVE_VERIFIED',
+                              'broadcast_operations': False,
+                              'adult_content_allowed': False,
+                              'delivery_verification': 'NOT_AVAILABLE'})
+        return {'verified_integrations':0,'providers':providers,
                 'default_capability':'MANUAL_ONLY',
                 'transmission_destination':'OBS_OUTPUT_ONLY',
                 'platform_delivery':'UNVERIFIED'}
