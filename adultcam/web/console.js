@@ -2,6 +2,7 @@
 const el = id => document.getElementById(id);
 let csrfToken = null;
 let principalRole = 'viewer';
+let principalSubject = '';
 const canOperate = () => principalRole === 'admin' || principalRole === 'operator';
 const isAdmin = () => principalRole === 'admin';
 
@@ -91,9 +92,27 @@ async function displayStrategy(path,kind){try{const r=await api(path);let root=e
 el('strategy-10h').onclick=()=>displayStrategy('/api/strategy/ten-hour','10h');
 el('strategy-30d').onclick=()=>displayStrategy('/api/strategy/thirty-day','30d');
 el('reload').onclick=async()=>{try{await load();note('Odświeżono.')}catch(e){note(e.message,false)}};
+async function refreshOperators(){
+  const sessions=(await api('/api/auth/sessions')).sessions;
+  const root=el('operators-list');root.replaceChildren();
+  if(!sessions.length)root.append(node('p','Brak aktywnych sesji przeglądarkowych.'));
+  for(const session of sessions){
+    const d=box(session.subject,session.role+' · ważna do '+new Date(session.expires_at*1000).toLocaleString('pl-PL'));
+    if(session.subject!==principalSubject)d.append(btn('UNIEWAŻNIJ SESJE',async()=>{
+      const phrase=prompt('Potwierdź cofnięcie dostępu temu operatorowi. Wpisz UNIEWAŻNIJ:');
+      if(phrase!=='UNIEWAŻNIJ')return;
+      const result=await api('/api/auth/sessions/revoke','POST',{subject:session.subject});
+      note('Unieważniono sesje: '+result.revoked_sessions);
+      await refreshOperators();
+    },true));
+    root.append(d);
+  }
+}
+
 async function bootstrap(){
   const me = await api('/api/auth/me');
   principalRole = me.role;
+  principalSubject = me.subject;
   el('identity').textContent = me.role.toUpperCase()+' · '+me.subject;
   if(me.source === 'oidc_browser'){
     csrfToken=(await api('/api/auth/csrf')).csrf_token;
@@ -102,6 +121,11 @@ async function bootstrap(){
       try{await api('/auth/logout','POST');window.location.replace('/auth/login')}
       catch(e){note(e.message,false)}
     };
+  }
+  if(isAdmin()){
+    el('operators-card').hidden=false;
+    el('operators-reload').onclick=async()=>{try{await refreshOperators()}catch(e){note(e.message,false)}};
+    await refreshOperators();
   }
   if(!isAdmin()){
     el('attest-form').closest('section').hidden=true;
