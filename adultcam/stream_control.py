@@ -10,14 +10,17 @@ from urllib.parse import urlsplit
 @dataclass(frozen=True)
 class StreamPolicy:
     allowed_servers: frozenset[str]
+    required_scene: str | None = None
 
     @classmethod
-    def from_env(cls, raw: str) -> 'StreamPolicy':
+    def from_env(cls, raw: str, required_scene: str | None = None) -> 'StreamPolicy':
         values = [item.strip() for item in raw.split(',') if item.strip()]
         approved = frozenset(item for item in values if _valid_destination(item))
         if len(approved) != len(values):
             raise ValueError('Nieprawidłowy adres RTMP/RTMPS na liście dozwolonych serwerów OBS.')
-        return cls(approved)
+        if required_scene is not None and (not required_scene.strip() or len(required_scene) > 120):
+            raise ValueError('Nieprawidłowa nazwa sceny bezpieczeństwa.')
+        return cls(approved, required_scene)
 
     def verify(self, response: dict) -> str | None:
         if not self.allowed_servers:
@@ -81,6 +84,10 @@ def run_obs_action(rpc, url: str, password: str, operation: str, policy: StreamP
             denied = policy.verify(destination)
             if denied:
                 return {'status':'FAILED','adapter':adapter,'reason_code':denied}
+            if policy.required_scene is not None:
+                observed_scene = rpc(url, password, 'GetCurrentProgramScene')
+                if observed_scene.get('currentProgramSceneName') != policy.required_scene:
+                    return {'status':'FAILED','adapter':adapter,'reason_code':'PRIVACY_SCENE_MISMATCH'}
         elif operation == 'stop_stream':
             if not current:
                 return {'status':'SUCCEEDED','adapter':adapter,'scope':'OBS_OUTPUT_ONLY',
