@@ -93,3 +93,24 @@ Wersja 0.4.0 nie zamyka globalnego P0 i nie jest produkcyjna.
 bezpieczna zdalna uwierzytelniona konsola wielooperatorska (OIDC/RBAC),
 a następnie autoryzowany adapter odczytowy konkretnej platformy
 po potwierdzeniu jej aktualnych zasad i uprawnień.
+
+## Priorytet 0.5.0 — częściowo zamknięty, API bezpieczeństwa + OBS preflight (13.10.2026)
+
+Zaimplementowano i zweryfikowano lokalnie:
+- JWT/OIDC jako alternatywny tryb autoryzacji API; bez współistnienia Basic
+  przy wyborze OIDC; weryfikacja kluczy JWKS i ról RBAC z podpisanych claimów.
+- Viewer tylko odczyt; operator modyfikuje sesje i może zatwierdzać akcje
+  OBS z dotychczasowym wymogiem świadomego potwierdzenia.
+- Wyłącznie administrator może rejestrować oświadczenie i operacje księgi.
+- Dopisano tożsamość operatora do wybranych zdarzeń krytycznych i rekoncyliacji.
+- Read-only preflight dla prawdziwego OBS z dokładnie ograniczoną syntetyczną
+  sceną, lokalnym RTMP i fikcyjnym kluczem, bez automatycznego START/STOP.
+- Testy regresyjne odrzucenia fałszywych tokenów oraz ryzykownych ustawień OBS.
+
+Nie potwierdzono na rzeczywistym sprzęcie: OBS Studio, zdalnego ingest RTMPS,
+S24 Ultra, IdP, OIDC browser login i autoryzowanego adaptera platformy.
+Nie ma gotowości produkcyjnej.
+
+Priorytet 0.6.0: OIDC Authorization Code + PKCE/BFF dla panelu WWW, real-device
+RTMPS E2E z dowodami odbioru, rozliczalność wszystkich zmian, sterowanie
+wieloma operatorami, następnie zatwierdzony adapter odczytowy platformy.
