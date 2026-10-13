@@ -5,3 +5,5 @@ Zmiany: oficjalny adapter Twitch Helix do odczytu statusu bez sterowania transmi
 Twitch jest obsługiwany wyłącznie jako przykład dozwolonego odczytu niepornograficznych transmisji; nie jest podłączoną platformą dla AdultCam. Brak aktywnego adaptera zewnętrznej usługi dla dorosłych, prawdziwego testu OBS, niezależnego potwierdzenia obrazu i produkcyjnej anonimizacji.
 
 Status: PARTIAL / NOT_PRODUCTION_READY. Dokumentacja: docs/PHASE_0_9_OFFICIAL_READ_ONLY_AND_PRIVACY.md.
+
+Chaturbate Stats API: autoryzowany odczyt własnego konta, 300 s cache, dane statusu online/offline i brak akcji na kontach. Nie wykonano prawdziwego wywołania z konta nadawcy.
