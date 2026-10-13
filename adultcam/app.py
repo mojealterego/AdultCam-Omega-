@@ -71,6 +71,10 @@ class ReconcileIn(BaseModel):
     action_id: int = Field(gt=0)
 
 
+class RecoveryApprovalIn(BaseModel):
+    session_id: int = Field(gt=0)
+
+
 class LedgerIn(BaseModel):
     platform: str = Field(min_length=2, max_length=80)
     currency: str = Field(pattern=r'^[A-Z]{3}$')
@@ -94,7 +98,7 @@ def create_app() -> FastAPI:
     obs_url = os.getenv('OBS_WS_URL','ws://127.0.0.1:4455')
     obs_password = os.getenv('OBS_WS_PASSWORD','')
     policy = StreamPolicy.from_env(os.getenv('ADULTCAM_OBS_ALLOWED_SERVERS', ''))
-    app = FastAPI(title='AdultCam Ω', version='0.3.0', docs_url=None, redoc_url=None)
+    app = FastAPI(title='AdultCam Ω', version='0.4.0', docs_url=None, redoc_url=None)
     app.state.allowed_servers = policy.allowed_servers
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1'])
 
@@ -145,7 +149,7 @@ def create_app() -> FastAPI:
 
     @app.get('/api/health')
     def health():
-        return {'status':'OK', 'version':'0.3.0','external_platform_integrations':'NOT_CONNECTED'}
+        return {'status':'OK', 'version':'0.4.0','external_platform_integrations':'NOT_CONNECTED'}
 
     @app.get('/api/dashboard')
     def dashboard(_: str = Depends(auth)):
@@ -369,7 +373,10 @@ def create_app() -> FastAPI:
             state=live[0]['state'] if live else 'NO_ACTIVE_SESSION'
             if live:
                 sid=live[0]['id']
-                desired = 'LIVE_PUBLIC' if observed and not reconnecting and not denied else 'RECOVERY'
+                # Read-only audits can downgrade LIVE to RECOVERY, but must never
+                # silently upgrade RECOVERY to LIVE. Operator must approve a
+                # separate recovery gate after an OBS recheck.
+                desired = 'RECOVERY' if (not observed or reconnecting or denied) else state
                 if desired != state:
                     c.execute('UPDATE sessions SET state=?,updated_at=? WHERE id=?',(desired,utc_now(),sid))
                     db.event(c,'OBS_STATE_DRIFT',str(sid),
@@ -380,6 +387,64 @@ def create_app() -> FastAPI:
                     'unmanaged_obs_output':bool(observed and not live),
                     'observed_active':observed,'output_reconnecting':reconnecting,
                     'destination_policy':denied,'platform_delivery':'UNVERIFIED'}
+
+    @app.post('/api/obs/recovery/approve')
+    def approve_recovery(body: RecoveryApprovalIn, request: Request, _: str = Depends(mutating)):
+        """Human-approved, read-only recovery: no OBS broadcast command."""
+        if request.headers.get('X-AdultCam-Confirm') != 'I_APPROVE':
+            raise HTTPException(403, 'Wymagane świadome zatwierdzenie przywrócenia stanu OBS.')
+        with db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            db.expire_stale_actions(c)
+            session = require_session(c, body.session_id)
+            if session['state'] != 'RECOVERY':
+                raise HTTPException(409, 'Przywracanie wymaga stanu RECOVERY.')
+            if not get_attested(c):
+                raise HTTPException(409, 'Wymagane aktualne oświadczenie operatora.')
+            if has_unresolved_obs(c):
+                raise HTTPException(409, 'Trwająca lub nieuzgodniona operacja OBS.')
+            if c.execute("SELECT 1 FROM sessions WHERE id<>? AND state IN ('LIVE_PUBLIC','RECOVERY') LIMIT 1",
+                         (body.session_id,)).fetchone():
+                raise HTTPException(409, 'Wykryto inną aktywną sesję.')
+            # A previously authorized START is necessary; a raw OBS output may
+            # belong to another application/session and is not enough evidence.
+            last_start = c.execute(
+                "SELECT a.id, a.status, r.observed_active FROM action_intents a "
+                "LEFT JOIN obs_reconciliations r ON a.id=r.action_id "
+                "WHERE a.session_id=? AND a.operation='start_stream' ORDER BY a.id DESC LIMIT 1",
+                (body.session_id,)).fetchone()
+            if not last_start or not (last_start['status'] == 'SUCCEEDED' or
+                    (last_start['status'] == 'UNKNOWN' and last_start['observed_active'] == 1)):
+                raise HTTPException(409, 'Brak potwierdzonego wcześniejszego uruchomienia dla tej sesji.')
+            last_stop = c.execute(
+                "SELECT id FROM action_intents WHERE session_id=? AND operation='stop_stream' "
+                "AND status IN ('SUCCEEDED','UNKNOWN','EXECUTING') AND id>? LIMIT 1",
+                (body.session_id, last_start['id'])).fetchone()
+            if last_stop:
+                raise HTTPException(409, 'Późniejsza operacja STOP wymaga oddzielnej kontroli.')
+            if not obs_password:
+                raise HTTPException(409, 'Brak uwierzytelnienia OBS.')
+            try:
+                status = obs_request(obs_url, obs_password, 'GetStreamStatus')
+                if not active_value(status) or status.get('outputReconnecting') is True:
+                    raise HTTPException(409, 'OBS nie nadaje stabilnie.')
+                destination = obs_request(obs_url, obs_password, 'GetStreamServiceSettings')
+                reason = StreamPolicy(app.state.allowed_servers).verify(destination)
+                if reason:
+                    raise HTTPException(409, 'Cel nadawania OBS nie został zatwierdzony.')
+            except HTTPException:
+                raise
+            except Exception:
+                # Do not expose transport exception strings containing secrets.
+                raise HTTPException(503, 'Nie udało się zweryfikować statusu OBS.')
+            c.execute('UPDATE sessions SET state=?,updated_at=? WHERE id=?',
+                      ('LIVE_PUBLIC', utc_now(), body.session_id))
+            db.event(c, 'RECOVERY_OPERATOR_APPROVED', str(body.session_id),
+                     {'from': 'RECOVERY', 'to': 'LIVE_PUBLIC', 'via': 'OBS_READ_ONLY',
+                      'platform_delivery': 'UNVERIFIED'}, str(uuid.uuid4()))
+            return {'session_id': body.session_id, 'state': 'LIVE_PUBLIC',
+                    'obs_command_sent': False, 'platform_delivery': 'UNVERIFIED',
+                    'operator_approval': 'RECORDED'}
 
     @app.post('/api/obs/reconcile')
     def reconcile(body:ReconcileIn, request:Request, _:str=Depends(mutating)):
