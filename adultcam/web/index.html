@@ -25,7 +25,7 @@
   </style>
 </head>
 <body>
-  <header><div class="brand">ADULTCAM <strong>Ω</strong><div class="caps">Control Tower / Local Runtime v0.2.0</div></div><span class="pill">LOCAL FIRST</span></header>
+  <header><div class="brand">ADULTCAM <strong>Ω</strong><div class="caps">Control Tower / Local Runtime v0.4.0</div></div><span class="pill">LOCAL FIRST</span></header>
   <main>
     <h1>Centrum operacyjne</h1>
     <p>System lokalny — statusy profili i księga przychodów pochodzą z wpisów operatora. Odczyt OBS potwierdza wyłącznie stan lokalnego wyjścia, nie dostarczenie transmisji na platformę.</p>
@@ -57,7 +57,7 @@
       </section>
       <section class="card">
         <h2>Monitor bezpieczeństwa OBS</h2>
-        <p>Odczyt wyłącznie lokalnego OBS. Błędy i odstępstwa od konfiguracji uruchamiają stan RECOVERY. Wznowienie LIVE wymaga ręcznego audytu. Automatyczny polling wymaga osobnego, świadomie uruchomionego procesu monitora.</p>
+        <p>Odczyt wyłącznie lokalnego OBS. Błędy i odstępstwa od konfiguracji uruchamiają stan RECOVERY. Wznowienie LIVE wymaga osobnego zatwierdzenia operatora, nawet po poprawnym audycie. Automatyczny polling wymaga osobnego, świadomie uruchomionego procesu monitora.</p>
         <div class="row"><button id="monitor-check">Wykonaj pojedynczy pomiar</button><button id="monitor-reload">Odśwież incydenty</button></div>
         <div class="stack" id="monitor-list" style="margin-top:13px"></div>
       </section>
@@ -128,6 +128,12 @@ function renderSessions(list, unresolved){let root=el('sessions-list');root.repl
     if(s.state==='PREPARE') row.append(btn('Oznacz READY',async()=>{await api('/api/sessions/'+s.id+'/transition','POST',{to_state:'READY'});note('Sesja gotowa.')}));
     if(s.state==='PREPARE'||s.state==='READY'||s.state==='ENDING')row.append(btn('Zamknij sesję',async()=>{await api('/api/sessions/'+s.id+'/transition','POST',{to_state:'CLOSED'});note('Sesja zamknięta.')}));
     if(s.state==='READY')row.append(btn('Przygotuj START OBS',()=>prepare('start_stream',s.id)));
+    if(s.state==='RECOVERY')row.append(btn('ZATWIERDŹ WYJŚCIE Z RECOVERY',async()=>{
+      const phrase=prompt('Potwierdź kontrolę OBS, zgodność celu i uprawnienia uczestników. Wpisz ZATWIERDZAM:');
+      if(phrase!=='ZATWIERDZAM')return;
+      const result=await api('/api/obs/recovery/approve','POST',{session_id:s.id},true);
+      note('Przywrócono stan wewnętrzny: '+result.state+'. Odbiór na platformie nadal NIEZWERYFIKOWANY.');
+    }));
     if(s.state==='LIVE_PUBLIC'||s.state==='RECOVERY'||unresolved.some(x=>x.session_id===s.id))row.append(btn('Przygotuj STOP OBS',()=>prepare('stop_stream',s.id),true));
     d.append(row);root.append(d);
   }
