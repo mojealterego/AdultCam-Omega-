@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 
-_FRAME = re.compile(r"^frame=(\\d{1,10})$")
+_FRAME = re.compile(r"^frame=(\d{1,10})$")
 
 
 def measure_frames(progress: str) -> int:
@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                                    port=args.port, duration=args.duration,
                                    confirmed=args.confirm_test_only, timeout=args.timeout)
     except (RuntimeError, ValueError) as exc:
-        parser.exit(2, f'{exc}\\n')
+        parser.exit(2, f'{exc}\n')
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0 if report['verification'] == 'RECEIVER_VIDEO_FRAMES' else 2
 
