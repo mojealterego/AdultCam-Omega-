@@ -138,3 +138,9 @@ strumieniowy privacy fail-closed gate oraz twardnienie publicznego ingress.
 - **Zaimplementowano:** rzeczywisty strumieniowy filtr RGB24 w trybie pełnego zaczernienia i walidacja prostokątów twarzy w module testowym. Brak detektora, więc nie wolno obiecywać selektywnego maskowania produkcyjnego.
 - **Nie zrealizowano:** rzeczywistego testu OBS Studio, zewnętrznych API, potwierdzenia platformy, produkcyjnej anonimizacji z ochroną całego toru transmisji, mobilnych testów urządzeniowych.
 - **Następny priorytet 0.8.0:** prawdziwy OBS E2E z infrastrukturą operatora, autoryzowane adaptery serwisów zgodnie z regulaminami oraz kierowanie wieloma wyjściami z rygorem prywatnych sesji; integracja pełnego toru anonimowego obrazu przed testem multistreamingu.
+
+## Wydanie 0.8.0 (14.10.2026)
+
+Przetestowano lokalny fanout syntetycznego wideo do dwóch odbiorników na 127.0.0.1. Dodano trwałe plany tras i blokowanie konfliktów PUBLIC/PRIVATE. Dowód odbioru własnego serwera nie jest potwierdzeniem platformy. Zewnętrzne adaptery, prawdziwy OBS, produkcyjne maskowanie i kontrola pokoi pozostają otwarte.
+
+Kolejny etap 0.9.0: zatwierdzone odczytowe integracje oficjalnych API, testy realnego sprzętu, ochrona wszystkich torów obrazu i pełne rozwiązanie bezpiecznych przejść PRIVATE.
