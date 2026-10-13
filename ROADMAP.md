@@ -94,40 +94,47 @@ bezpieczna zdalna uwierzytelniona konsola wielooperatorska (OIDC/RBAC),
 a następnie autoryzowany adapter odczytowy konkretnej platformy
 po potwierdzeniu jej aktualnych zasad i uprawnień.
 
-## Priorytet 0.5.0 — częściowo zamknięty, API bezpieczeństwa + OBS preflight (13.10.2026)
+## Status 0.5.0 — bezpieczeństwo API i bramka testu prawdziwego OBS (13.10.2026)
 
-Zaimplementowano i zweryfikowano lokalnie:
-- JWT/OIDC jako alternatywny tryb autoryzacji API; bez współistnienia Basic
-  przy wyborze OIDC; weryfikacja kluczy JWKS i ról RBAC z podpisanych claimów.
-- Viewer tylko odczyt; operator modyfikuje sesje i może zatwierdzać akcje
-  OBS z dotychczasowym wymogiem świadomego potwierdzenia.
-- Wyłącznie administrator może rejestrować oświadczenie i operacje księgi.
-- Dopisano tożsamość operatora do wybranych zdarzeń krytycznych i rekoncyliacji.
-- Read-only preflight dla prawdziwego OBS z dokładnie ograniczoną syntetyczną
-  sceną, lokalnym RTMP i fikcyjnym kluczem, bez automatycznego START/STOP.
-- Testy regresyjne odrzucenia fałszywych tokenów oraz ryzykownych ustawień OBS.
+**Wykonane w kodzie:** opcjonalny weryfikator JWT OIDC z ograniczonym JWKS,
+role i autoryzacja odczyt/zapis oraz admin-only księga/oświadczenia. Dodano
+procedurę weryfikacji fizycznego OBS: przed uruchomieniem testu kontrola
+aktywności, syntetycznej sceny, fałszywego klucza i docelowego loopback RTMP.
+Dostarczono testy regresyjne oraz dokumentację dla bezpiecznego Android SSH.
 
-Nie potwierdzono na rzeczywistym sprzęcie: OBS Studio, zdalnego ingest RTMPS,
-S24 Ultra, IdP, OIDC browser login i autoryzowanego adaptera platformy.
-Nie ma gotowości produkcyjnej.
+**Bramka NIEZAMKNIĘTA:** prawdziwy OBS nie był osiągalny podczas implementacji;
+brak realnego testu przyjęcia RTMPS przez niezależny ingest, fizycznego S24 Ultra,
+prawdziwego dostawcy OIDC, UI OAuth PKCE, kontroli mTLS/HTTPS, jawnie
+zaakceptowanego konektora platformy, ochrony wideo i audytu wydania.
 
-Priorytet 0.6.0: OIDC Authorization Code + PKCE/BFF dla panelu WWW, real-device
-RTMPS E2E z dowodami odbioru, rozliczalność wszystkich zmian, sterowanie
-wieloma operatorami, następnie zatwierdzony adapter odczytowy platformy.
+**Priorytet 0.6.0:** produkcyjny browser OIDC authorization-code + PKCE/BFF,
+autoryzacja i rozliczalność per operator, procedura RTMPS E2E na sprzęcie,
+pierwsza certyfikowana integracja platformy (odczyt i evidence/receipts),
+a dopiero potem wielokanałowe prowadzenie transmisji.
 
-## Etap 0.6.0 — Authorization Code/PKCE, RBAC i lokalny RTMPS (13.10.2026)
+## Postęp 0.6.0 — OIDC browser, osobne sesje operatorów i test TLS RTMPS
 
-Zaimplementowano: OAuth browser/PKCE S256 + RS256 JWT, wyraźne role,
-serwerowe sesje 15 min i admin revocation, anti-CSRF, audyt tożsamości,
-TLS proxy config na loopback, test rzeczywistego transportu TLS/RTMPS
-dla sztucznego obrazu z FFmpeg i liczeniem odebranych klatek.
+**Zrobione w kodzie:** web Authorization Code + PKCE, tokeny weryfikowane
+JWT RS256, nonce/state/cookie, sesje SQLite 15 minut, CSRF, jawne role,
+wylogowanie i unieważnianie sesji admina, hermetyzacja danych finansowych,
+Caddy HTTPS config i instrukcja zdalna. Test realnej transmisji syntetycznej
+RTMPS z TLS i certyfikatem lokalnym; brak nagrania i zewnętrznej usługi.
 
-Bramki nadal OPEN: prawdziwy OBS/RTMPS E2E, rzeczywisty IdP i
-publiczny HTTPS z zewnętrznej sieci, fizyczny Samsung S24 Ultra,
-zabezpieczenia ingress przed DoS, read-only platform adapters,
-prawne/administracyjne uprawnienia osób, fail-closed face masking.
-P0 pozostaje PARTIAL, wersja 0.6.0 ma status BETA.
+**Bramki pozostające OPEN:** instalacja OBS operatora, prawdziwy odbiorca
+RTMPS pod kontrolą użytkownika, prawdziwy IdP, live mobile S24 Ultra,
+przegląd penetracyjny i rate limiting, źródłowe weryfikacje uczestników,
+konkretne adaptery platform, fail-closed ochrona twarzy. Globalny priorytet
+P0 nadal częściowy; nie zamykać go bez dowodów i testów real device.
 
-Następny etap 0.7.0: autoryzowany rzeczywisty OBS + zaufany ingest RTMPS,
-potwierdzenia destination delivery, zgodne z regulaminami adaptery
-read-only i media privacy gate z fail-closed.
+**Kolejny etap 0.7.0:** test OBS Studio ↔ kontrolowany zaufany RTMPS,
+bezpieczne per-platform adapters read-only i potwierdzenia odbioru,
+strumieniowy privacy fail-closed gate oraz twardnienie publicznego ingress.
+
+
+## Postęp v0.7.0 — odbiór kontrolowany i mechanizmy bezpieczeństwa obrazu
+
+- **Zaimplementowano:** źródła danych własnego odbiornika RTMPS podpisane HMAC, integralność, świeżość, blokowanie replay, katalog dozwolonych odbiorników; osobny rejestr potwierdzeń w SQLite.
+- **Zaimplementowano:** opcjonalny interlock sceny OBS przy START oraz wykrywanie dryfu przez monitor, bez automatycznego START/STOP w monitorze.
+- **Zaimplementowano:** rzeczywisty strumieniowy filtr RGB24 w trybie pełnego zaczernienia i walidacja prostokątów twarzy w module testowym. Brak detektora, więc nie wolno obiecywać selektywnego maskowania produkcyjnego.
+- **Nie zrealizowano:** rzeczywistego testu OBS Studio, zewnętrznych API, potwierdzenia platformy, produkcyjnej anonimizacji z ochroną całego toru transmisji, mobilnych testów urządzeniowych.
+- **Następny priorytet 0.8.0:** prawdziwy OBS E2E z infrastrukturą operatora, autoryzowane adaptery serwisów zgodnie z regulaminami oraz kierowanie wieloma wyjściami z rygorem prywatnych sesji; integracja pełnego toru anonimowego obrazu przed testem multistreamingu.
