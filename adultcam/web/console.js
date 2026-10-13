@@ -93,6 +93,14 @@ async function load(){let d=await api('/api/dashboard');el('count-profiles').tex
   window.reconciledIds=new Set(d.actions.filter(a=>a.status==='UNKNOWN').map(a=>a.id).filter(id=>
     !(d.unresolved_obs_actions || []).some(x=>x.id===id)));
   renderProfiles(d.profiles);renderSessions(d.sessions,d.unresolved_obs_actions||[]);renderActions(d.actions);renderEvents(d.events);
+  const routeSelect=el('route-session'), selected=routeSelect.value;
+  routeSelect.replaceChildren();
+  for(const session of d.sessions){
+    const option=document.createElement('option');option.value=String(session.id);
+    option.textContent='#'+session.id+' · '+session.title;routeSelect.append(option);
+  }
+  if(d.sessions.some(session=>String(session.id)===selected))routeSelect.value=selected;
+  await refreshRoutes();
   await refreshMonitor();
   let r=el('ledger-totals');r.replaceChildren();const totals=Object.entries(d.revenue_by_currency);
   if(!totals.length)r.append(node('p','Nie zapisano transakcji.'));
