@@ -4,4 +4,4 @@ import os
 
 
 def test_package_version_matches_release():
-    assert __version__ == '0.7.0'
+    assert __version__ == '0.8.0'
