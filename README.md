@@ -1,4 +1,24 @@
-# AdultCam Ω — Control Tower v0.4.0
+# AdultCam Ω — Control Tower v0.5.0
+
+## Wydanie 0.5.0 — OIDC Bearer API i bramka testu prawdziwego OBS (13.10.2026)
+
+**Wdrożono w kodzie:** opcjonalny JWT/OIDC (RS256, JWKS, issuer/audience/exp),
+role `viewer/operator/admin`, kontrolę admin-only dla księgi i oświadczeń
+oraz wyłącznie odczytowy preflight lokalnego OBS przed prywatnym testem.
+
+Dokumentacja: [OIDC/RBAC API](docs/OIDC_API_0_5.md) ·
+[Kontrolowany test OBS](docs/OBS_REAL_DEVICE_GATE_0_5.md) ·
+[Notatki wydania](RELEASE_NOTES_0.5.0.md).
+
+```bash
+python -m adultcam.obs_acceptance --check --port 19350
+python -m pytest -q
+```
+
+**Limitacje:** brak podłączonego IdP i logowania OIDC w HTML UI; brak
+real-device OBS/RTMPS, uwierzytelnienia publicznej warstwy HTTPS/mTLS,
+konektorów platform i anonimizacji obrazu. Serwer nadal dostępny tylko przez
+localhost; nie wystawiaj portu 8765 do internetu.
 
 ## Wydanie 0.4.0 — priorytet P0: kontrolowany test prywatnego RTMP i fail-closed RECOVERY (13.10.2026)
 
