@@ -9,12 +9,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 from .auth import Principal, load_oidc
+from .browser_auth import BrowserSessions, load_browser_config
 from .database import Database, utc_now
 from .domain import action_policy, session_transition_allowed
 from .obs import request as obs_request
@@ -68,6 +69,10 @@ class ActionIn(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=120)
 
 
+class RevokeSessionsIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=256)
+
+
 class ReconcileIn(BaseModel):
     action_id: int = Field(gt=0)
 
@@ -97,10 +102,12 @@ def create_app() -> FastAPI:
     if oidc is None and len(password) < 16:
         raise RuntimeError('Ustaw ADULTCAM_ADMIN_PASSWORD (co najmniej 16 znaków).')
     db = Database(os.getenv('ADULTCAM_DB_PATH', str(Path.home() / '.adultcam-omega' / 'adultcam.sqlite3')))
+    browser_config = load_browser_config(oidc)
+    browser = BrowserSessions(db, browser_config, oidc) if browser_config is not None and oidc is not None else None
     obs_url = os.getenv('OBS_WS_URL','ws://127.0.0.1:4455')
     obs_password = os.getenv('OBS_WS_PASSWORD','')
     policy = StreamPolicy.from_env(os.getenv('ADULTCAM_OBS_ALLOWED_SERVERS', ''))
-    app = FastAPI(title='AdultCam Ω', version='0.5.0', docs_url=None, redoc_url=None)
+    app = FastAPI(title='AdultCam Ω', version='0.6.0', docs_url=None, redoc_url=None)
     app.state.allowed_servers = policy.allowed_servers
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1'])
 
@@ -112,13 +119,17 @@ def create_app() -> FastAPI:
         response.headers['Referrer-Policy'] = 'no-referrer'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Content-Security-Policy'] = (
-            "default-src 'none'; script-src 'self' 'unsafe-inline'; "
+            "default-src 'none'; script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
             "img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
         return response
 
     def auth(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)) -> Principal:
         if oidc is not None:
+            if browser is not None and not request.headers.get('Authorization'):
+                session = browser.authenticate(request)
+                if session is not None:
+                    return session[0]
             authorization = request.headers.get('Authorization', '')
             if not authorization.startswith('Bearer '):
                 raise HTTPException(401, 'Wymagany token Bearer.', headers={'WWW-Authenticate': 'Bearer'})
@@ -137,7 +148,12 @@ def create_app() -> FastAPI:
         if not user.allows('operator'):
             raise HTTPException(403, 'Operator ma wymagane uprawnienia; dostęp tylko do odczytu.')
         origin = request.headers.get('origin')
-        if origin:
+        if user.source == 'oidc_browser':
+            if browser is None or origin != browser.config.public_origin:
+                raise HTTPException(403, 'Nieprawidłowy Origin sesji przeglądarki.')
+            if not browser.csrf(request, request.headers.get('X-AdultCam-CSRF', '')):
+                raise HTTPException(403, 'Brak prawidłowego tokenu anty-CSRF.')
+        elif origin:
             here = f'{request.url.scheme}://{request.url.netloc}'
             if origin != here:
                 raise HTTPException(403, 'Nieprawidłowy Origin.')
@@ -162,27 +178,84 @@ def create_app() -> FastAPI:
             raise HTTPException(404, 'Nie znaleziono sesji.')
         return dict(row)
 
+    @app.get('/auth/login')
+    def oidc_login():
+        if browser is None:
+            raise HTTPException(404, 'Logowanie przeglądarkowe nie jest skonfigurowane.')
+        return browser.initiate()
+
+    @app.get('/auth/callback')
+    def oidc_callback(request: Request, code: str = '', state: str = ''):
+        if browser is None:
+            raise HTTPException(404, 'Logowanie przeglądarkowe nie jest skonfigurowane.')
+        return browser.complete(state, code, request.cookies.get('__Host-ac-oauth'))
+
     @app.get('/')
-    def index(_: str = Depends(auth)):
+    def index(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)):
+        try:
+            auth(request, credentials)
+        except HTTPException as err:
+            if err.status_code == 401 and browser is not None:
+                return RedirectResponse('/auth/login', status_code=303)
+            raise
         return FileResponse(APP_ROOT / 'web' / 'index.html')
+
+    @app.get('/assets/console.js')
+    def console_script():
+        return FileResponse(APP_ROOT / 'web' / 'console.js', media_type='application/javascript')
+
+    @app.get('/api/auth/csrf')
+    def csrf_bootstrap(request: Request, user: Principal = Depends(auth)):
+        return {'csrf_token': browser.renew_csrf(request) if browser is not None and
+                user.source == 'oidc_browser' else None,
+                'source': user.source}
+
+    @app.post('/auth/logout', status_code=204)
+    def logout(request: Request, user: Principal = Depends(auth)):
+        if browser is None or user.source != 'oidc_browser':
+            raise HTTPException(409, 'Brak sesji przeglądarkowej.')
+        if (request.headers.get('Origin') != browser.config.public_origin or
+                request.headers.get('X-AdultCam-Request') != '1' or
+                not browser.csrf(request, request.headers.get('X-AdultCam-CSRF', ''))):
+            raise HTTPException(403, 'Brak poprawnego Origin lub CSRF.')
+        browser.logout(request)
+        response = Response(status_code=204)
+        response.delete_cookie('__Host-ac-omega', secure=True, httponly=True,
+                               samesite='strict', path='/')
+        return response
 
     @app.get('/api/health')
     def health():
-        return {'status':'OK', 'version':'0.5.0','external_platform_integrations':'NOT_CONNECTED'}
+        return {'status':'OK', 'version':'0.6.0','external_platform_integrations':'NOT_CONNECTED'}
 
     @app.get('/api/auth/me')
     def auth_me(user: Principal = Depends(auth)):
         return {'subject':user.subject, 'role':user.role, 'source':user.source}
 
+    @app.get('/api/auth/sessions')
+    def active_browser_sessions(user: Principal = Depends(auth)):
+        if not user.allows('admin'):
+            raise HTTPException(403, 'Wymagana rola admin.')
+        return {'sessions': browser.list_sessions() if browser is not None else []}
+
+    @app.post('/api/auth/sessions/revoke')
+    def revoke_browser_sessions(body: RevokeSessionsIn, user: Principal = Depends(admin_mutating)):
+        if browser is None:
+            raise HTTPException(409, 'Nie skonfigurowano sesji przeglądarkowych.')
+        return {'revoked_sessions': browser.revoke_subject(body.subject, user)}
+
     @app.get('/api/dashboard')
-    def dashboard(_: str = Depends(auth)):
+    def dashboard(user: Principal = Depends(auth)):
         with db.connect() as c:
             profiles = db.rows(c,'SELECT * FROM profiles ORDER BY id DESC LIMIT 100')
             sessions = db.rows(c,'SELECT * FROM sessions ORDER BY id DESC LIMIT 100')
             actions = db.rows(c,'SELECT * FROM action_intents ORDER BY id DESC LIMIT 100')
             events = db.rows(c,'SELECT * FROM events ORDER BY id DESC LIMIT 100')
-            ledger = db.rows(c,'SELECT * FROM ledger ORDER BY id DESC LIMIT 100')
-            totals = db.rows(c,'SELECT currency,SUM(amount_minor) AS amount_minor FROM ledger GROUP BY currency')
+            ledger = db.rows(c,'SELECT * FROM ledger ORDER BY id DESC LIMIT 100') if user.allows('admin') else []
+            totals = db.rows(c,'SELECT currency,SUM(amount_minor) AS amount_minor FROM ledger GROUP BY currency') if user.allows('admin') else []
+            if not user.allows('admin'):
+                events = [e for e in events if e['kind'] not in
+                          {'LEDGER_MANUAL_ENTRY', 'ATTESTATION_RECORDED'}]
             for e in events:
                 e['detail'] = json.loads(e.pop('detail_json'))
             for a in actions:
@@ -223,18 +296,18 @@ def create_app() -> FastAPI:
         return {'id':result.lastrowid,'recorded_at':when,'verification':'OPERATOR_SELF_ATTESTATION_ONLY'}
 
     @app.post('/api/profiles',status_code=201)
-    def new_profile(body: ProfileIn, _: str = Depends(mutating)):
+    def new_profile(body: ProfileIn, user: Principal = Depends(mutating)):
         with db.connect() as c:
             try:
                 cur=c.execute('INSERT INTO profiles(platform,alias,public_url,updated_at) VALUES(?,?,?,?)',
                               (body.platform, body.alias,body.public_url,utc_now()))
             except sqlite3.IntegrityError:
                 raise HTTPException(409,'Profil jest już dodany.')
-            db.event(c,'PROFILE_CREATED',str(cur.lastrowid),{'platform':body.platform,'alias':body.alias},str(uuid.uuid4()))
+            db.event(c,'PROFILE_CREATED',str(cur.lastrowid),{'platform':body.platform,'alias':body.alias, 'operator_subject':user.subject, 'auth_source':user.source},str(uuid.uuid4()))
             return {'id':cur.lastrowid,'status':'UNVERIFIED'}
 
     @app.post('/api/profiles/{pid}/observations',status_code=201)
-    def observe(pid: int, body: ObservationIn, _: str = Depends(mutating)):
+    def observe(pid: int, body: ObservationIn, user: Principal = Depends(mutating)):
         with db.connect() as c:
             row=c.execute('SELECT * FROM profiles WHERE id=?',(pid,)).fetchone()
             if not row:
@@ -242,21 +315,21 @@ def create_app() -> FastAPI:
             if row['status'] == body.status:
                 return {'changed':False,'status':body.status}
             c.execute('UPDATE profiles SET status=?,updated_at=? WHERE id=?',(body.status,utc_now(),pid))
-            db.event(c,'PROFILE_STATUS',str(pid),{'from':row['status'],'to':body.status,'source':body.source},str(uuid.uuid4()))
+            db.event(c,'PROFILE_STATUS',str(pid),{'from':row['status'],'to':body.status,'source':body.source, 'operator_subject':user.subject, 'auth_source':user.source},str(uuid.uuid4()))
             return {'changed':True,'status':body.status}
 
     @app.post('/api/sessions',status_code=201)
-    def new_session(body: SessionIn, _: str = Depends(mutating)):
+    def new_session(body: SessionIn, user: Principal = Depends(mutating)):
         with db.connect() as c:
             cur=c.execute('INSERT INTO sessions(title,state,updated_at) VALUES(?,?,?)',(body.title,'PREPARE',utc_now()))
-            db.event(c,'SESSION_CREATED',str(cur.lastrowid),{'title':body.title},str(uuid.uuid4()))
+            db.event(c,'SESSION_CREATED',str(cur.lastrowid),{'title':body.title,'operator_subject':user.subject,'auth_source':user.source},str(uuid.uuid4()))
             return {'id':cur.lastrowid,'state':'PREPARE'}
 
     def has_pending_or_unknown_start(c, sid: int) -> bool:
         return c.execute("SELECT 1 FROM action_intents a LEFT JOIN obs_reconciliations r ON r.action_id=a.id WHERE a.session_id=? AND a.operation='start_stream' AND (a.status IN ('PENDING_APPROVAL','EXECUTING') OR (a.status='UNKNOWN' AND r.action_id IS NULL)) LIMIT 1", (sid,)).fetchone() is not None
 
     @app.post('/api/sessions/{sid}/transition')
-    def transition(sid:int, body:TransitionIn, _: str=Depends(mutating)):
+    def transition(sid:int, body:TransitionIn, user:Principal=Depends(mutating)):
         with db.connect() as c:
             row=require_session(c,sid)
             # LIVE_PUBLIC is only reached upon an OBS-confirmed successful stream start.
@@ -268,14 +341,14 @@ def create_app() -> FastAPI:
             if decision.verdict != 'ALLOW':
                 raise HTTPException(409,decision.reason)
             c.execute('UPDATE sessions SET state=?,updated_at=? WHERE id=?',(body.to_state,utc_now(),sid))
-            db.event(c,'SESSION_TRANSITION',str(sid),{'from':row['state'],'to':body.to_state},str(uuid.uuid4()))
+            db.event(c,'SESSION_TRANSITION',str(sid),{'from':row['state'],'to':body.to_state,'operator_subject':user.subject,'auth_source':user.source},str(uuid.uuid4()))
             return {'id':sid,'state':body.to_state}
 
     def has_unresolved_obs(c):
         return c.execute("SELECT a.id FROM action_intents a LEFT JOIN obs_reconciliations r ON r.action_id=a.id WHERE (a.status='UNKNOWN' AND r.action_id IS NULL) OR a.status='EXECUTING' LIMIT 1").fetchone() is not None
 
     @app.post('/api/actions',status_code=201)
-    def new_action(body: ActionIn, _: str=Depends(mutating)):
+    def new_action(body: ActionIn, user:Principal=Depends(mutating)):
         with db.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             db.expire_stale_actions(c)
@@ -304,7 +377,7 @@ def create_app() -> FastAPI:
                 raise HTTPException(409,decision.reason)
             cur=c.execute('INSERT INTO action_intents(operation,session_id,idempotency_key,status,risk_class,policy_decision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
                           (body.operation,body.session_id,body.idempotency_key,'PENDING_APPROVAL',decision.risk_class,decision.verdict,utc_now(),utc_now()))
-            db.event(c,'ACTION_INTENT',str(cur.lastrowid),{'operation':body.operation,'policy':decision.verdict},str(uuid.uuid4()))
+            db.event(c,'ACTION_INTENT',str(cur.lastrowid),{'operation':body.operation,'policy':decision.verdict,'operator_subject':user.subject,'auth_source':user.source},str(uuid.uuid4()))
             return {'id':cur.lastrowid,'status':'PENDING_APPROVAL','risk':decision.risk_class}
 
     @app.post('/api/actions/{aid}/approve')
@@ -353,7 +426,7 @@ def create_app() -> FastAPI:
         return {'id':aid,'receipt':receipt}
 
     @app.post('/api/actions/{aid}/cancel')
-    def cancel_action(aid:int, _:str=Depends(mutating)):
+    def cancel_action(aid:int, user:Principal=Depends(mutating)):
         with db.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             db.expire_stale_actions(c)
@@ -363,11 +436,11 @@ def create_app() -> FastAPI:
             if action['status'] != 'PENDING_APPROVAL':
                 raise HTTPException(409,'Anulować można wyłącznie niewykonany zamiar.')
             c.execute("UPDATE action_intents SET status='CANCELLED',updated_at=? WHERE id=?",(utc_now(),aid))
-            db.event(c,'ACTION_CANCELLED',str(aid),{'operation':action['operation']},str(uuid.uuid4()))
+            db.event(c,'ACTION_CANCELLED',str(aid),{'operation':action['operation'],'operator_subject':user.subject,'auth_source':user.source},str(uuid.uuid4()))
             return {'id':aid,'status':'CANCELLED','obs_command_sent':False}
 
     @app.post('/api/obs/check')
-    def check_observed_output(_:str=Depends(mutating)):
+    def check_observed_output(user:Principal=Depends(mutating)):
         """Manual audit: local OBS output only, never a remote platform receipt."""
         with db.connect() as c:
             c.execute('BEGIN IMMEDIATE')
@@ -389,7 +462,7 @@ def create_app() -> FastAPI:
                 if live and live[0]['state']=='LIVE_PUBLIC':
                     sid=live[0]['id']
                     c.execute("UPDATE sessions SET state='RECOVERY',updated_at=? WHERE id=?",(utc_now(),sid))
-                    db.event(c,'OBS_MONITOR_UNKNOWN',str(sid),{'reason':'OBS_READ_FAILED'},str(uuid.uuid4()))
+                    db.event(c,'OBS_MONITOR_UNKNOWN',str(sid),{'reason':'OBS_READ_FAILED','operator_subject':user.subject,'auth_source':user.source},str(uuid.uuid4()))
                 return {'connection':'NEEDS_VERIFICATION',
                         'state':'RECOVERY' if live else 'NO_ACTIVE_SESSION',
                         'observed_active':None,'platform_delivery':'UNVERIFIED'}
@@ -404,7 +477,7 @@ def create_app() -> FastAPI:
                     c.execute('UPDATE sessions SET state=?,updated_at=? WHERE id=?',(desired,utc_now(),sid))
                     db.event(c,'OBS_STATE_DRIFT',str(sid),
                              {'from':state,'to':desired,'observed_active':observed,
-                              'destination_policy':denied,'platform_delivery':'UNVERIFIED'},str(uuid.uuid4()))
+                              'destination_policy':denied,'platform_delivery':'UNVERIFIED','operator_subject':user.subject,'auth_source':user.source},str(uuid.uuid4()))
                     state=desired
             return {'connection':'CONNECTED_API','state':state,
                     'unmanaged_obs_output':bool(observed and not live),
