@@ -1,4 +1,21 @@
-# AdultCam Ω — Control Tower v0.3.0
+# AdultCam Ω — Control Tower v0.4.0
+
+## Wydanie 0.4.0 — priorytet P0: kontrolowany test prywatnego RTMP i fail-closed RECOVERY (13.10.2026)
+
+- Naprawiono automatyczne przywracanie `RECOVERY → LIVE_PUBLIC` przez ręczny odczyt OBS. Wznowienie wewnętrznego stanu wymaga jawnego zatwierdzenia operatora i odczytu stanu OBS z weryfikacją zatwierdzonego celu.
+- Dodano prywatny odbiornik `ffmpeg` testujący faktyczne przyjęcie syntetycznych klatek przez lokalny transport RTMP. **To nie jest test zewnętrznej platformy, ani sam w sobie test OBS**.
+- Zdalne adresy strumieni na allowliście wymagają `rtmps://`; zwykłe `rtmp://` działa wyłącznie z `localhost` / `127.0.0.1` dla testu prywatnego.
+- Dodano przycisk zatwierdzania `RECOVERY`, testy bezpieczeństwa i instrukcję [docs/OBS_PRIVATE_INGEST_0_4.md](docs/OBS_PRIVATE_INGEST_0_4.md).
+
+**Szybki test transportu (wymaga FFmpeg):**
+
+```bash
+python -m adultcam.rtmp_probe --self-test --port 0 --duration 2 --timeout 20
+```
+
+`verification=RECEIVER_VIDEO_FRAMES` potwierdza rzeczywiste odebranie klatek przez lokalny odbiornik testowy; pole `platform_delivery` pozostaje `UNVERIFIED`.
+
+Przed użyciem z prawdziwą transmisją konieczne są testy na rzeczywistym OBS, niezależny odbiór RTMPS po stronie uprawnionego endpointu, ochrona danych/wizerunku i audyt autoryzacji.
 
 ## Wydanie 0.3.0 — monitoring bezpieczeństwa i repozytorium główne (13.10.2026)
 
