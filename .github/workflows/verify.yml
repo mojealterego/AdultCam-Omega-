@@ -21,3 +21,7 @@ jobs:
         run: python -m adultcam.rtmps_probe
       - name: Verify controlled owned-receiver receipts and privacy gate
         run: python -m pytest -q tests/test_070_delivery.py tests/test_070_privacy.py tests/test_070_obs_privacy_gate.py tests/test_070_monitor_privacy.py tests/test_070_real_receipt.py
+      - name: Verify synthetic local multistream
+        run: python -m adultcam.simulcast_lab --receivers 2 --duration 3
+      - name: Verify mobile console JavaScript syntax
+        run: node --check adultcam/web/console.js
