@@ -90,3 +90,72 @@ class TwitchHelixReadOnly:
             'Authorization': f'Bearer {self._bearer_token}',
             'Accept': 'application/json',
         }, timeout=5, follow_redirects=False)
+
+
+CHaturbate_STATS_URL = 'https://chaturbate.com/statsapi/'
+CHaturbate_CACHE_SECONDS = 300.0
+
+
+class ChaturbateStatsReadOnly:
+    """Owner-authorized official read-only user statistics.
+
+    Official API requires a secret query parameter; never log the full URL
+    or HTTP traces, and only call the pinned HTTPS origin.
+    """
+
+    def __init__(self, *, username: str, token: str,
+                 client: httpx.Client | None = None,
+                 monotonic: Callable[[], float] = time.monotonic):
+        if not isinstance(username, str) or not re.fullmatch(r'[A-Za-z0-9_]{3,64}', username):
+            raise ValueError('Invalid broadcaster username')
+        if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9]{24}', token):
+            raise ValueError('Invalid stats API token')
+        self._username=username
+        self._token=token
+        self._client=client
+        self._clock=monotonic
+        self._recent=None
+        self._timestamp=None
+
+    def read_status(self) -> dict:
+        now=self._clock()
+        if self._timestamp is not None and self._recent is not None and 0 <= now-self._timestamp<CHaturbate_CACHE_SECONDS:
+            return {**self._recent,'cached':True}
+        try:
+            if self._client is None:
+                with httpx.Client(timeout=httpx.Timeout(5),follow_redirects=False,trust_env=False) as client:
+                    response=self._send(client)
+            else:
+                response=self._send(self._client)
+            if response.status_code != 200:
+                raise PlatformStatusError(f'UPSTREAM_{response.status_code}')
+            payload=response.json()
+            if not isinstance(payload,dict):
+                raise PlatformStatusError('INVALID_RESPONSE')
+            duration=payload.get('time_online')
+            if payload.get('username') != self._username or type(duration) is not int:
+                state='UNVERIFIED'
+            elif duration == -1:
+                state='OFFLINE_REPORTED'
+            elif 0 <= duration <= 60*24*365:
+                state='ONLINE_REPORTED'
+            else:
+                state='UNVERIFIED'
+        except PlatformStatusError:
+            raise
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            raise PlatformStatusError('STATUS_UNAVAILABLE') from None
+        result={'platform':'CHATURBATE','source':'OFFICIAL_OWNER_STATS_API',
+                'state':state,'broadcaster':self._username,
+                'observed_at':datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                'provider_refresh_seconds':300,'cached':False,
+                'broadcast_control':'DISABLED','platform_delivery':'UNVERIFIED'}
+        self._recent=result
+        self._timestamp=now
+        return result.copy()
+
+    def _send(self, client: httpx.Client) -> httpx.Response:
+        return client.get(CHaturbate_STATS_URL,
+                          params={'username':self._username,'token':self._token},
+                          headers={'Accept':'application/json'},
+                          timeout=5,follow_redirects=False)
