@@ -17,3 +17,5 @@ jobs:
         run: |
           ffmpeg -version | head -n 1
           python -m adultcam.rtmp_probe --self-test --port 0 --duration 2 --timeout 20
+      - name: Verify real localhost RTMPS TLS and received video frames
+        run: python -m adultcam.rtmps_probe
