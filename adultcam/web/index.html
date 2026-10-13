@@ -25,7 +25,7 @@
   </style>
 </head>
 <body>
-  <header><div class="brand">ADULTCAM <strong>Ω</strong><div class="caps">Control Tower / Control Tower v0.7.0</div></div><div class="row"><span class="pill" id="identity">LOCAL FIRST</span><button id="logout" hidden>Wyloguj</button></div></header>
+  <header><div class="brand">ADULTCAM <strong>Ω</strong><div class="caps">Control Tower / Control Tower v0.8.0</div></div><div class="row"><span class="pill" id="identity">LOCAL FIRST</span><button id="logout" hidden>Wyloguj</button></div></header>
   <main>
     <h1>Centrum operacyjne</h1>
     <p>System lokalny — statusy profili i księga przychodów pochodzą z wpisów operatora. Odczyt OBS potwierdza wyłącznie stan lokalnego wyjścia, nie dostarczenie transmisji na platformę.</p>
@@ -75,6 +75,26 @@
         <h2>Sesje i kontrola transmisji</h2>
         <form id="session-form"><label>Nazwa sesji</label><div class="row"><input name="title" required maxlength="140" placeholder="Sesja wieczorna"><button type="submit" class="primary">Utwórz</button></div></form>
         <div class="stack" id="sessions-list" style="margin-top:15px"></div>
+      </section>
+      <section class="card">
+        <h2>Trasy multistream — plan laboratoryjny 0.8</h2>
+        <p>Wyłącznie planowanie i odczyt podpisanych potwierdzeń WŁASNYCH odbiorników. Żaden przycisk nie rozpoczyna transmisji na platformie ani nie uruchamia prywatnego pokoju.</p>
+        <form id="route-form">
+          <label>Sesja</label><select name="session_id" id="route-session" required></select>
+          <div class="row">
+            <div><label>Unikalna nazwa trasy</label><input name="route_key" required pattern="[A-Za-z0-9_.-]{2,64}" maxlength="64" placeholder="lab-alpha"></div>
+            <div><label>Platforma / grupa</label><input name="platform" required maxlength="80" value="OWNED_LAB"></div>
+          </div>
+          <div class="row">
+            <div><label>Odbiorcy</label><select name="audience"><option>PUBLIC</option><option>PRIVATE</option></select></div>
+            <div><label>Możliwości adaptera</label><select name="capability"><option value="MANUAL_ONLY">MANUAL_ONLY</option><option value="OWNED_INGEST_TEST">OWNED_INGEST_TEST</option></select></div>
+          </div>
+          <label>Receiver ID (tylko dla własnego testu; bez klucza)</label><input name="receiver_id" maxlength="64" placeholder="lab-alpha">
+          <button class="primary" type="submit">Dodaj plan trasy</button>
+        </form>
+        <div class="row" style="margin-top:12px"><button id="routes-evaluate-public">Sprawdź PUBLIC</button><button id="routes-evaluate-private">Sprawdź PRIVATE</button></div>
+        <div id="routes-evaluation" class="entry" style="margin-top:12px">Brak oceny</div>
+        <div class="stack" id="routes-list" style="margin-top:15px"></div>
       </section>
       <section class="card">
         <h2>Rejestr przychodów</h2>
