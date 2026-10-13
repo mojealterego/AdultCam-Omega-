@@ -1,4 +1,15 @@
-# AdultCam Ω — Control Tower v0.7.0
+# AdultCam Ω — Control Tower v0.8.0
+
+## Wydanie 0.8.0 — planowanie tras i testy lokalnego rozdzielania sygnału
+
+Dodano trwały rejestr tras sesji, kontrolę konfliktu PUBLIC/PRIVATE oraz test FFmpeg, w którym syntetyczny obraz dociera do kilku lokalnych odbiorników. Sprawdzenie podpisanego dowodu dotyczy jedynie własnych odbiorników. Zewnętrzne integracje pozostają `MANUAL_ONLY`.
+
+Szczegóły: [dokumentacja 0.8](docs/PHASE_0_8_ROUTE_SAFETY_AND_LAB_SIMULCAST.md).
+
+```bash
+python -m adultcam.simulcast_lab --receivers 2 --duration 3
+python -m pytest -q
+```
 
 ## Wydanie 0.7.0 — laboratoryjny odbiór i bramka prywatności
 
