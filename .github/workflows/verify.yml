@@ -25,3 +25,5 @@ jobs:
         run: python -m adultcam.simulcast_lab --receivers 2 --duration 3
       - name: Verify mobile console JavaScript syntax
         run: node --check adultcam/web/console.js
+      - name: Verify 0.9 official read-only API and fail-closed RGB24 video
+        run: python -m pytest -q tests/test_090_official_platform.py tests/test_090_platform_api.py tests/test_090_privacy_pipeline.py tests/test_090_privacy_transport.py
