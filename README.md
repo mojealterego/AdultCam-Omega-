@@ -1,4 +1,22 @@
-# AdultCam Ω — Control Tower v0.5.0
+# AdultCam Ω — Control Tower v0.6.0
+
+## Wydanie 0.6.0 — bezpieczny wielooperatorski panel i lokalny RTMPS (13.10.2026)
+
+Implementacja obejmuje OAuth/OIDC Authorization Code + PKCE, weryfikację JWT
+RS256, przeglądarkowe sesje z ochroną CSRF, role viewer/operator/admin,
+cofanie sesji, audyt aktora, HTTPS reverse proxy Caddy oraz test FFmpeg
+z prawdziwym połączeniem TLS i odbiorem syntetycznych klatek RTMPS.
+Nie wykonano prawdziwej transmisji z OBS Studio ani testu dostarczenia do
+żadnej zewnętrznej platformy. Brak zweryfikowanej produkcyjnej instancji
+IdP, domeny HTTPS lub testu Samsung S24 Ultra.
+
+Instrukcje: [konsola HTTPS](docs/REMOTE_CONSOLE_0_6.md),
+[test RTMPS](docs/RTMPS_ACCEPTANCE_0_6.md),
+[release notes](RELEASE_NOTES_0.6.0.md).
+
+Syntetyczny test FFmpeg/OpenSSL:
+
+    python -m adultcam.rtmps_probe
 
 ## Wydanie 0.5.0 — OIDC Bearer API i bramka testu prawdziwego OBS (13.10.2026)
 
