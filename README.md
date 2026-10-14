@@ -1,4 +1,12 @@
-# AdultCam Ω — Control Tower 1.0.0rc1
+# AdultCam Ω — Control Tower 1.0.0rc2
+
+## OFFLINE_LAB — działanie bez kont na platformach
+
+Wydanie 1.0.0rc2 udostępnia samodzielne lokalne centrum sterowania i katalog **przyszłych** kont. Polecenie `adultcam-omega-lab` uruchamia tryb, w którym START OBS oraz odczyt zewnętrznych API są blokowane. Zapisywanie planowanych kont nie wymaga haseł, tokenów ani zewnętrznego API. Wszystkie pozycje pozostają NIEPODŁĄCZONE.
+
+Instrukcja: [docs/STANDALONE_1_0_RC2.md](docs/STANDALONE_1_0_RC2.md). Zakres zmian: [RELEASE_NOTES_1.0.0-rc2.md](RELEASE_NOTES_1.0.0-rc2.md).
+
+**Ważne:** tryb bezkontowy jest gotowy do testów lokalnych, ale wydanie **1.0.0 GA nadal nie jest zatwierdzone do rzeczywistej transmisji produkcyjnej**.
 
 ## Status release candidate: NOT_PRODUCTION_READY
 
