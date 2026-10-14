@@ -29,3 +29,7 @@ jobs:
         run: python -m pytest -q tests/test_090_official_platform.py tests/test_090_platform_api.py tests/test_090_privacy_pipeline.py tests/test_090_privacy_transport.py
       - name: Verify owner-statistics API contract offline
         run: python -m pytest -q tests/test_090_chaturbate_stats.py tests/test_090_chaturbate_api.py
+      - name: Verify production release stays locked without independent evidence
+        run: |
+          python -m pytest -q tests/test_100_gate_basics.py tests/test_100_gate_signed.py
+          python -c "import subprocess,sys; p=subprocess.run([sys.executable,'-m','adultcam.release_gate'],capture_output=True,text=True); assert p.returncode==2 and '\"approved\": false' in p.stdout, p.stdout"
