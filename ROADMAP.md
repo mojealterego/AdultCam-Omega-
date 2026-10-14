@@ -152,3 +152,12 @@ Dostarczono stały, oficjalny adapter odczytu stanu Twitch (tylko dla treści zg
 **Otwarte:** połączenie z prawdziwą platformą 18+, rzeczywisty OBS, niezależne potwierdzenie obrazu po stronie platformy, działający detektor twarzy i wpięcie toru ochrony przed OBS, bezpieczne PRIVATE/STOP, Samsung Galaxy S24 Ultra, pełne E2E. Status PARTIAL — NOT_PRODUCTION_READY.
 
 **Uzupełnienie 0.9.0:** Chaturbate official owner Stats API — tylko odczyt własnego konta, testy HTTP z fikcyjnymi poświadczeniami. Bez testu live, bez sterowania nadawaniem, bez gwarancji klatek.
+
+
+## Kamień milowy 1.0.0rc1: przygotowanie do zewnętrznej akceptacji
+
+Utworzono Ed25519/SHA-256 release gate i testy negatywne. Brama produkcyjna wymaga autentycznych dowodów z dziewięciu obszarów oraz zweryfikowanego OIDC/HTTPS.
+
+Nadal otwarte: realny OBS Studio; niezależna telemetria faktycznej platformy; tor anonimizacji obowiązkowo przed OBS; komplet potwierdzeń STOP wszystkich publicznych tras przed PRIVATE; zgody i wieku; Samsung S24 Ultra; audyt bezpieczeństwa i backup/recovery.
+
+Dopóki te warunki nie są potwierdzone, stan wersji 1.0.0 to BLOCKED. Kod 1.0.0rc1 nie jest wydaniem produkcyjnym.
