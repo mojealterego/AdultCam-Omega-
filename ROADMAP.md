@@ -161,3 +161,9 @@ Utworzono Ed25519/SHA-256 release gate i testy negatywne. Brama produkcyjna wyma
 Nadal otwarte: realny OBS Studio; niezależna telemetria faktycznej platformy; tor anonimizacji obowiązkowo przed OBS; komplet potwierdzeń STOP wszystkich publicznych tras przed PRIVATE; zgody i wieku; Samsung S24 Ultra; audyt bezpieczeństwa i backup/recovery.
 
 Dopóki te warunki nie są potwierdzone, stan wersji 1.0.0 to BLOCKED. Kod 1.0.0rc1 nie jest wydaniem produkcyjnym.
+
+## Faza 1.0.0rc2: uruchomienie bez kont platform
+
+Dodano izolowany tryb OFFLINE_LAB, który blokuje OBS START i odczyty API platform, a także trwały rejestr planowanych kont z jawnie nieskomunikowanym statusem. Operacje lokalne, analityka ręczna i syntetyczne próby FFmpeg mogą być kontynuowane bez zakładania kont.
+
+Wersja 1.0.0 GA pozostaje zablokowana do czasu przeprowadzenia rzeczywistych testów bezpieczeństwa toru wideo, OBS, integracji z autoryzowaną platformą, OIDC/HTTPS i testów urządzeniowych. Sam wpis do katalogu nigdy nie oznacza podłączenia konta.
