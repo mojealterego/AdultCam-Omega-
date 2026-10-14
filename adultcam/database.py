@@ -38,6 +38,16 @@ class Database:
         with self.connect() as c:
             c.execute('PRAGMA journal_mode=WAL')
             c.executescript('''
+                CREATE TABLE IF NOT EXISTS platform_connection_slots (
+                    id INTEGER PRIMARY KEY,
+                    platform_id TEXT NOT NULL,
+                    account_label TEXT NOT NULL COLLATE NOCASE,
+                    status TEXT NOT NULL DEFAULT 'NOT_CONNECTED'
+                        CHECK(status IN ('NOT_CONNECTED','AWAITING_AUTHORIZATION','DISABLED')),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(platform_id, account_label)
+                );
                 CREATE TABLE IF NOT EXISTS profiles (
                     id INTEGER PRIMARY KEY, platform TEXT NOT NULL, alias TEXT NOT NULL,
                     public_url TEXT, status TEXT NOT NULL DEFAULT 'UNVERIFIED',
