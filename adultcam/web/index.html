@@ -25,7 +25,7 @@
   </style>
 </head>
 <body>
-  <header><div class="brand">ADULTCAM <strong>Ω</strong><div class="caps">Control Tower / Control Tower v1.0.0rc1</div></div><div class="row"><span class="pill" id="identity">LOCAL FIRST</span><button id="logout" hidden>Wyloguj</button></div></header>
+  <header><div class="brand">ADULTCAM <strong>Ω</strong><div class="caps">Control Tower / Control Tower v1.0.0rc2</div></div><div class="row"><span class="pill" id="identity">LOCAL FIRST</span><button id="logout" hidden>Wyloguj</button></div></header>
   <main>
     <h1>Centrum operacyjne</h1>
     <p>System lokalny — statusy profili i księga przychodów pochodzą z wpisów operatora. Odczyt OBS potwierdza wyłącznie stan lokalnego wyjścia, nie dostarczenie transmisji na platformę.</p>
@@ -68,6 +68,16 @@
         <div class="entry" id="chaturbate-status" style="margin-top:12px">Nie sprawdzono</div>
         <button id="twitch-status-check">Sprawdź status Twitch</button>
         <div class="entry" style="margin-top:12px" id="twitch-status">Nie sprawdzono; niezweryfikowany odbiór na platformie.</div>
+      </section>
+      <section class="card" id="platform-slots-card">
+        <h2>Przyszłe konta — bez logowania do platform</h2>
+        <p>Dodaj tylko lokalny identyfikator planowanego konta. Nie wpisuj hasła, tokenu, klucza RTMP ani adresu autoryzacji. Pozycja <strong>nie oznacza aktywnego połączenia</strong>. Zewnętrzne połączenie wymaga osobnej autoryzacji w późniejszym etapie.</p>
+        <form id="platform-slot-form">
+          <label>Platforma z katalogu</label><select name="platform_id" id="platform-slot-provider" required></select>
+          <label>Etykieta planowanego konta (nie hasło)</label><input name="account_label" required minlength="2" maxlength="64" pattern="[A-Za-z0-9_. -]{2,64}" placeholder="konto-testowe">
+          <button type="submit" class="primary">Dodaj miejsce na przyszłe konto</button>
+        </form>
+        <div id="platform-slots-list" class="stack" style="margin-top:15px"></div>
       </section>
       <section class="card">
         <h2>Lista obserwowanych profili</h2>
