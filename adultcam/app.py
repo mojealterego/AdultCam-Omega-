@@ -22,6 +22,7 @@ from .obs import request as obs_request
 from .monitor import monitor_once, monitor_status
 from .ingest_receipts import verify_proof
 from .routing import MAX_ROUTES_PER_SESSION, evaluate_route_plan
+from .release_gate import enforce_mode
 from .platform_status import TwitchHelixReadOnly, ChaturbateStatsReadOnly, PlatformStatusError
 from .stream_control import StreamPolicy, active_value, public_status, run_obs_action
 from .strategy import build_ten_hour_plan, build_month_plan
@@ -110,6 +111,7 @@ class LedgerIn(BaseModel):
 
 
 def create_app() -> FastAPI:
+    release_state = enforce_mode()
     oidc = load_oidc()
     password = os.getenv('ADULTCAM_ADMIN_PASSWORD', '')
     if oidc is None and len(password) < 16:
@@ -133,7 +135,8 @@ def create_app() -> FastAPI:
     owner_token = os.getenv('ADULTCAM_CHATURBATE_STATS_TOKEN', '')
     owner_stats_reader = (ChaturbateStatsReadOnly(username=owner_username, token=owner_token)
                           if owner_username and owner_token else None)
-    app = FastAPI(title='AdultCam Ω', version='0.9.0', docs_url=None, redoc_url=None)
+    app = FastAPI(title='AdultCam Ω', version='1.0.0rc1', docs_url=None, redoc_url=None)
+    app.state.release_gate_status = release_state.status
     app.state.allowed_servers = policy.allowed_servers
     app.state.required_scene = policy.required_scene
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1'])
@@ -253,7 +256,7 @@ def create_app() -> FastAPI:
 
     @app.get('/api/health')
     def health():
-        return {'status':'OK', 'version':'0.8.0','external_platform_integrations':'NOT_CONNECTED'}
+        return {'status':'OK', 'version':'1.0.0rc1','external_platform_integrations':'NOT_CONNECTED'}
 
     @app.get('/api/auth/me')
     def auth_me(user: Principal = Depends(auth)):
