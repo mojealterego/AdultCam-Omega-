@@ -18,6 +18,24 @@ async function api(path, method='GET', data=null, approve=false){
 }
 function box(title,sub){let d=node('div',null,'entry');d.append(node('b',title),node('div',sub,'muted'));return d;}
 function btn(label,handler,danger=false){let b=node('button',label,danger?'danger':'');b.type='button';b.onclick=async()=>{try{await handler();await load()}catch(e){note(e.message,false)}};return b;}
+async function refreshPlatformSlots(){
+  const data=await api('/api/platform-connections');
+  const root=el('platform-slots-list');root.replaceChildren();
+  if(!data.connections.length)root.append(node('p','Nie dodano planowanych kont.'));
+  for(const item of data.connections){
+    const panel=box(item.platform_id+' · '+item.account_label,
+      item.status+' · NIEPODŁĄCZONE / brak zewnętrznych działań');
+    if(canOperate() && item.status==='NOT_CONNECTED')panel.append(btn('Przygotuj autoryzację (bez łączenia)',async()=>{
+      await api('/api/platform-connections/'+item.id+'/prepare','POST');
+      note('Zapisano tylko zamiar. Konto pozostaje NIEPODŁĄCZONE.');
+    }));
+    if(canOperate() && item.status!=='DISABLED')panel.append(btn('Wyłącz pozycję',async()=>{
+      await api('/api/platform-connections/'+item.id+'/disable','POST');
+      note('Wyłączono lokalną pozycję. Nie wysłano żadnej komendy do platformy.');
+    },true));
+    root.append(panel);
+  }
+}
 function renderProfiles(list){let root=el('profiles-list');root.replaceChildren();if(!list.length)root.append(node('p','Brak profili.'));
   for(const p of list){let d=box(p.platform+' · '+p.alias,'Status: '+p.status+' · wpis ręczny');
     let row=node('div',null,'row');if(canOperate())for(const status of ['ONLINE','OFFLINE','UNVERIFIED'])row.append(btn(status,async()=>{await api('/api/profiles/'+p.id+'/observations','POST',{status,source:'MANUAL'});note('Zaktualizowano ręczną obserwację.')}));d.append(row);root.append(d)}
@@ -102,6 +120,7 @@ async function load(){let d=await api('/api/dashboard');el('count-profiles').tex
   if(d.sessions.some(session=>String(session.id)===selected))routeSelect.value=selected;
   await refreshRoutes();
   await refreshMonitor();
+  await refreshPlatformSlots();
   let r=el('ledger-totals');r.replaceChildren();const totals=Object.entries(d.revenue_by_currency);
   if(!totals.length)r.append(node('p','Nie zapisano transakcji.'));
   for(const [currency,amount] of totals)r.append(box(currency,(amount/100).toFixed(2)+' '+currency));
@@ -126,6 +145,16 @@ for(const audience of ['PUBLIC','PRIVATE']){
   el('routes-evaluate-'+audience.toLowerCase()).onclick=()=>
     evaluateRoutes(audience).catch(error=>note(error.message,false));
 }
+el('platform-slot-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  try{
+    const data=new FormData(event.currentTarget);
+    await api('/api/platform-connections','POST',{
+      platform_id:data.get('platform_id'),account_label:data.get('account_label')});
+    event.currentTarget.reset();note('Zapisano planowane konto. Nie podłączono platformy.');
+    await refreshPlatformSlots();
+  }catch(error){note(error.message,false)}
+});
 bindForm('profile-form',f=>({platform:f.get('platform'),alias:f.get('alias'),public_url:f.get('public_url')||null}),'/api/profiles');
 bindForm('session-form',f=>({title:f.get('title')}),'/api/sessions');
 bindForm('attest-form',f=>({adults_verified:f.has('adults_verified'),informed_consent:f.has('informed_consent'),account_authorized:f.has('account_authorized'),terms_checked:f.has('terms_checked')}),'/api/attestations');
@@ -159,6 +188,13 @@ async function refreshOperators(){
 
 async function bootstrap(){
   const me = await api('/api/auth/me');
+  const platformCatalog=await api('/api/platform-registry');
+  const select=el('platform-slot-provider');
+  select.replaceChildren();
+  for(const item of platformCatalog.platforms){
+    const option=node('option',item.label+' · '+item.implementation);
+    option.value=item.platform_id;select.append(option);
+  }
   principalRole = me.role;
   principalSubject = me.subject;
   el('identity').textContent = me.role.toUpperCase()+' · '+me.subject;
@@ -180,7 +216,7 @@ async function bootstrap(){
     el('ledger-form').closest('section').hidden=true;
   }
   if(!canOperate()){
-    for(const id of ['session-form','profile-form','obs-audit','monitor-check','route-form'])el(id).hidden=true;
+    for(const id of ['session-form','profile-form','obs-audit','monitor-check','route-form','platform-slot-form'])el(id).hidden=true;
   }
   await load();
 }
