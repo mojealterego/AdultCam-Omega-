@@ -66,7 +66,7 @@ def _parse_json(data):
 
 
 def _proof_file(directory, name):
-    if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*\\.json', name):
+    if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*\.json', name):
         raise ValueError('BAD_PATH')
     file = directory / name
     if file.is_symlink() or not file.is_file() or not file.resolve().is_relative_to(directory.resolve()):
