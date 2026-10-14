@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from .auth import Principal, load_oidc
 from .browser_auth import BrowserSessions, load_browser_config
@@ -22,6 +22,7 @@ from .obs import request as obs_request
 from .monitor import monitor_once, monitor_status
 from .ingest_receipts import verify_proof
 from .routing import MAX_ROUTES_PER_SESSION, evaluate_route_plan
+from .platform_registry import PROVIDER_BY_SLUG, public_catalog, public_slot
 from .release_gate import enforce_mode
 from .platform_status import TwitchHelixReadOnly, ChaturbateStatsReadOnly, PlatformStatusError
 from .stream_control import StreamPolicy, active_value, public_status, run_obs_action
@@ -73,6 +74,13 @@ class ActionIn(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=120)
 
 
+class PlatformSlotIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    platform_id: str = Field(min_length=2, max_length=40, pattern=r'^[a-z0-9_-]+$')
+    account_label: str = Field(min_length=2, max_length=64,
+                               pattern=r'^[a-zA-Z0-9_. -]+$')
+
+
 class RouteIn(BaseModel):
     session_id: int = Field(gt=0)
     route_key: str = Field(min_length=2, max_length=64, pattern=r'^[a-zA-Z0-9_.-]+$')
@@ -112,6 +120,11 @@ class LedgerIn(BaseModel):
 
 def create_app() -> FastAPI:
     release_state = enforce_mode()
+    operation_mode = os.getenv('ADULTCAM_OPERATION_MODE', 'STANDARD')
+    if operation_mode not in ('STANDARD', 'OFFLINE_LAB'):
+        raise RuntimeError('Nieprawidłowy tryb pracy ADULTCAM_OPERATION_MODE.')
+    if operation_mode == 'OFFLINE_LAB' and os.getenv('ADULTCAM_RELEASE_MODE') == 'production':
+        raise RuntimeError('Laboratorium nie może pracować w trybie produkcyjnym.')
     oidc = load_oidc()
     password = os.getenv('ADULTCAM_ADMIN_PASSWORD', '')
     if oidc is None and len(password) < 16:
@@ -127,16 +140,17 @@ def create_app() -> FastAPI:
                      os.getenv('ADULTCAM_TWITCH_TOKEN', ''),
                      os.getenv('ADULTCAM_TWITCH_BROADCASTER_ID', ''))
     twitch_reader = None
-    if all(twitch_fields):
+    if all(twitch_fields) and operation_mode != 'OFFLINE_LAB':
         twitch_reader = TwitchHelixReadOnly(client_id=twitch_fields[0],
                                           bearer_token=twitch_fields[1],
                                           broadcaster_id=twitch_fields[2])
     owner_username = os.getenv('ADULTCAM_CHATURBATE_USERNAME', '')
     owner_token = os.getenv('ADULTCAM_CHATURBATE_STATS_TOKEN', '')
     owner_stats_reader = (ChaturbateStatsReadOnly(username=owner_username, token=owner_token)
-                          if owner_username and owner_token else None)
-    app = FastAPI(title='AdultCam Ω', version='1.0.0rc1', docs_url=None, redoc_url=None)
+                          if owner_username and owner_token and operation_mode != 'OFFLINE_LAB' else None)
+    app = FastAPI(title='AdultCam Ω', version='1.0.0rc2', docs_url=None, redoc_url=None)
     app.state.release_gate_status = release_state.status
+    app.state.operation_mode = operation_mode
     app.state.allowed_servers = policy.allowed_servers
     app.state.required_scene = policy.required_scene
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1'])
@@ -256,7 +270,7 @@ def create_app() -> FastAPI:
 
     @app.get('/api/health')
     def health():
-        return {'status':'OK', 'version':'1.0.0rc1','external_platform_integrations':'NOT_CONNECTED'}
+        return {'status':'OK', 'version':'1.0.0rc2','operation_mode':operation_mode,'external_platform_integrations':'DISABLED_BY_LAB_MODE' if operation_mode=='OFFLINE_LAB' else 'NOT_CONNECTED'}
 
     @app.get('/api/auth/me')
     def auth_me(user: Principal = Depends(auth)):
@@ -445,6 +459,66 @@ def create_app() -> FastAPI:
         except PlatformStatusError as error:
             raise HTTPException(503, error.code) from None
 
+    @app.get('/api/platform-registry')
+    def platform_registry(_:Principal=Depends(auth)):
+        return {'platforms':public_catalog(), 'status':'OFFLINE_CATALOG',
+                'external_requests_sent':0, 'credentials_stored':False}
+
+    @app.get('/api/platform-connections')
+    def list_platform_slots(_:Principal=Depends(auth)):
+        with db.connect() as c:
+            rows=db.rows(c,'SELECT id,platform_id,account_label,status,created_at,updated_at '
+                            'FROM platform_connection_slots ORDER BY id DESC LIMIT 100')
+        return {'connections':[public_slot(r) for r in rows],
+                'external_requests_sent':0,'platform_delivery':'UNVERIFIED'}
+
+    @app.post('/api/platform-connections',status_code=201)
+    def register_platform_slot(body:PlatformSlotIn,user:Principal=Depends(mutating)):
+        if body.platform_id not in PROVIDER_BY_SLUG:
+            raise HTTPException(422, 'Nieznany dostawca. Wyłącznie katalog statyczny.')
+        with db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            try:
+                cur=c.execute('INSERT INTO platform_connection_slots('
+                              'platform_id,account_label,status,created_at,updated_at) '
+                              'VALUES(?,?,?,?,?)',
+                              (body.platform_id,body.account_label,'NOT_CONNECTED',utc_now(),utc_now()))
+            except sqlite3.IntegrityError:
+                raise HTTPException(409, 'Taka pozycja już istnieje.')
+            db.event(c,'PLATFORM_SLOT_CREATED',str(cur.lastrowid),
+                     {'platform_id':body.platform_id,'operator_subject':user.subject,
+                      'status':'NOT_CONNECTED'},str(uuid.uuid4()))
+            row=c.execute('SELECT * FROM platform_connection_slots WHERE id=?',
+                          (cur.lastrowid,)).fetchone()
+            return public_slot(dict(row))
+
+    def update_platform_slot(slot_id:int,new_status:str,user:Principal):
+        with db.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            row=c.execute('SELECT * FROM platform_connection_slots WHERE id=?',
+                          (slot_id,)).fetchone()
+            if row is None:
+                raise HTTPException(404,'Nie znaleziono pozycji.')
+            if row['status']=='DISABLED' and new_status!='DISABLED':
+                raise HTTPException(409,'Wyłączona pozycja nie może zostać aktywowana automatycznie.')
+            if row['status']!=new_status:
+                c.execute('UPDATE platform_connection_slots SET status=?,updated_at=? WHERE id=?',
+                          (new_status,utc_now(),slot_id))
+                db.event(c,'PLATFORM_SLOT_STATUS',str(slot_id),
+                         {'from':row['status'],'to':new_status,
+                          'operator_subject':user.subject,'external_actions_performed':0},str(uuid.uuid4()))
+            out=dict(c.execute('SELECT * FROM platform_connection_slots WHERE id=?',
+                               (slot_id,)).fetchone())
+            return public_slot(out)
+
+    @app.post('/api/platform-connections/{slot_id}/prepare')
+    def prepare_platform_slot(slot_id:int,user:Principal=Depends(mutating)):
+        return update_platform_slot(slot_id,'AWAITING_AUTHORIZATION',user)
+
+    @app.post('/api/platform-connections/{slot_id}/disable')
+    def disable_platform_slot(slot_id:int,user:Principal=Depends(mutating)):
+        return update_platform_slot(slot_id,'DISABLED',user)
+
     @app.get('/api/platforms/capabilities')
     def platform_capabilities(_: str = Depends(auth)):
         # External services remain MANUAL_ONLY until authorized integrations and
@@ -540,6 +614,8 @@ def create_app() -> FastAPI:
 
     @app.post('/api/actions',status_code=201)
     def new_action(body: ActionIn, user:Principal=Depends(mutating)):
+        if operation_mode == 'OFFLINE_LAB' and body.operation == 'start_stream':
+            raise HTTPException(409, 'OFFLINE_LAB: START OBS jest zabroniony.')
         with db.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             db.expire_stale_actions(c)
@@ -583,6 +659,8 @@ def create_app() -> FastAPI:
                 raise HTTPException(404,'Nie znaleziono operacji.')
             if action['status'] != 'PENDING_APPROVAL':
                 raise HTTPException(409,'Operacja została już obsłużona lub jest w toku.')
+            if operation_mode == 'OFFLINE_LAB' and action['operation'] == 'start_stream':
+                raise HTTPException(409, 'OFFLINE_LAB: zatwierdzenie START OBS jest zabronione.')
             # A durable, SQLite-arbitrated single-flight gate across processes/threads.
             if c.execute("SELECT id FROM action_intents WHERE status='EXECUTING' LIMIT 1").fetchone():
                 raise HTTPException(409,'Inna operacja OBS jest wykonywana.')
@@ -809,6 +887,14 @@ def create_app() -> FastAPI:
             return {'id':cur.lastrowid, 'source':'MANUAL'}
 
     return app
+
+
+def serve_standalone():
+    """Safe offline launcher. No platform reads, OBS START or account access."""
+    if os.getenv('ADULTCAM_RELEASE_MODE') == 'production':
+        raise RuntimeError('Nie wolno uruchamiać OFFLINE_LAB w trybie production.')
+    os.environ['ADULTCAM_OPERATION_MODE'] = 'OFFLINE_LAB'
+    return serve()
 
 
 def serve():
